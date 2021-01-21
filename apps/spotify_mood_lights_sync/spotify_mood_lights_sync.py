@@ -8,7 +8,7 @@ from spotipy.oauth2 import SpotifyClientCredentials
 from typing import Tuple, List
 
 
-class SpotifyLightsSync(hass.Hass):
+class SpotifyMoodLightsSync(hass.Hass):
     """SpotifyLightsSync class."""
 
     def initialize(self):

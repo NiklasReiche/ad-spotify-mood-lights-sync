@@ -1,10 +1,10 @@
 from appdaemontestframework import automation_fixture
 import secrets
-from apps.spotify_lights_sync.spotify_lights_sync import SpotifyLightsSync
+from apps.spotify_mood_lights_sync.spotify_mood_lights_sync import SpotifyMoodLightsSync
 
 
-@automation_fixture(SpotifyLightsSync)
-def spotify_lights_sync(given_that):
+@automation_fixture(SpotifyMoodLightsSync)
+def uut(given_that):
     given_that.passed_arg('client_id').is_set_to(secrets.CLIENT_ID)
     given_that.passed_arg('client_secret').is_set_to(secrets.CLIENT_SECRET)
     given_that.passed_arg('media_player').is_set_to('media_player.spotify_test')
@@ -19,13 +19,13 @@ def spotify_lights_sync(given_that):
     ])
 
 
-def test_callbacks_are_set(given_that, spotify_lights_sync: SpotifyLightsSync, assert_that):
-    assert_that(spotify_lights_sync).\
+def test_callbacks_are_set(given_that, uut: SpotifyMoodLightsSync, assert_that):
+    assert_that(uut).\
         listens_to.state('media_player.spotify_test', attribute="media_content_id").\
-        with_callback(spotify_lights_sync.sync_lights)
+        with_callback(uut.sync_lights)
 
 
-def test_custom_color_profile(given_that, spotify_lights_sync: SpotifyLightsSync, assert_that):
-    spotify_lights_sync.sync_lights_debug((0, 0))
+def test_custom_color_profile(given_that, uut: SpotifyMoodLightsSync, assert_that):
+    uut.sync_lights_debug((0, 0))
 
     assert_that('light.test_light').was.turned_on(rgb_color=[0, 0, 255])

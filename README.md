@@ -22,13 +22,13 @@ If you wish to view the color map in use for debugging color profiles, you addit
 Since the Spotify integration in Home Assistant only polls the Spotify API every 30 seconds or so to detect when the currently playing song changes, the light synchronization may be delayed by up to 30 seconds in the worst case.
 
 ## Installation
-Use [HACS](https://hacs.xyz/) or download the `spotify_lights_sync` directory from inside the `apps` directory here to your local `apps` directory, then add the configuration to enable the `spotify_lights_sync` module.
+Use [HACS](https://hacs.xyz/) or download the `spotify_mood_lights_sync` directory from inside the `apps` directory here to your local `apps` directory, then add the configuration to enable the `spotify_mood_lights_sync` module.
 
 ## App configuration
 ```yaml
-spotify_lights_sync:
-  module: spotify_lights_sync
-  class: SpotifyLightsSync
+spotify_mood_lights_sync:
+  module: spotify_mood_lights_sync
+  class: SpotifyMoodLightsSync
   client_id: !secret spotify_client_id
   client_secret: !secret spotify_client_secret
   media_player: media_player.spotify_johndoe
