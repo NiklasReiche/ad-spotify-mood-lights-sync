@@ -1,2 +1,5 @@
 .idea
 venv
+.pytest_cache
+
+tests/secrets.py
