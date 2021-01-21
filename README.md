@@ -8,10 +8,10 @@ This app uses the Spotify API to extract the emotional mood value of the current
 Each mood value lies on a 2D plane which is mapped to a color spectrum from which the rgb color for the light is picked. 
 
 The default color map used by the app looks as follows. The horizontal axis ranges from negative (left) to positive (right) emotion while
-the vertical axis ranges from weak (bottom) to high (top) energy. A sad, slow song is thus mapped to blue light while a happy and upbeat song
+the vertical axis ranges from weak (bottom) to high (top) energy. A sad, slow song is thus mapped to blue light while a happy, upbeat song
 is mapped to yellow light.
 
-<img src="https://github.com/NiklasReiche/ha-spotify-lights-sync/examples/default_profile.png" alt="default color profile" width="400">
+<img src="https://github.com/NiklasReiche/ha-spotify-lights-sync/blob/master/examples/default_profile.png" alt="default color profile" width="200">
 
 ## Prerequisites
 
