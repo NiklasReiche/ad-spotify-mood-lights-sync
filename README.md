@@ -14,15 +14,33 @@ For this app to work, the following python packages must be installed in the App
 - spotipy
 - numpy
 
-If you wish to view the color map in use for debugging color profiles, you additionally need the following python package:
+If you wish to view the color map currently in use for debugging color profiles, you additionally need the following python package:
 
 - Pillow
+
+You may need to also specify the following system packages depending on your system setup:
+```yaml
+system_packages:
+  - jpeg
+  - tiff
+```
 
 ## Issues
 Since the Spotify integration in Home Assistant only polls the Spotify API every 30 seconds or so to detect when the currently playing song changes, the light synchronization may be delayed by up to 30 seconds in the worst case.
 
 ## Installation
 Use [HACS](https://hacs.xyz/) or download the `spotify_mood_lights_sync` directory from inside the `apps` directory here to your local `apps` directory, then add the configuration to enable the `spotify_mood_lights_sync` module.
+
+#### Minimal configuration:
+```yaml
+spotify_mood_lights_sync:
+  module: spotify_mood_lights_sync
+  class: SpotifyMoodLightsSync
+  client_id: !secret spotify_client_id
+  client_secret: !secret spotify_client_secret
+  media_player: media_player.spotify_johndoe
+  light: light.bedroom
+```
 
 ## App configuration
 ```yaml
