@@ -1,4 +1,6 @@
 # Spotify Mood Lights Sync
+[![hacs_badge](https://img.shields.io/badge/HACS-Default-orange.svg?style=for-the-badge)](https://github.com/custom-components/hacs)
+
 _AppDaemon app that synchronizes rgb lights to the mood of the currently playing spotify song in Home Assistant._
 
 ## About
