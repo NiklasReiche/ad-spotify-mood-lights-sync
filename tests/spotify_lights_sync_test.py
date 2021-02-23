@@ -1,12 +1,11 @@
 from appdaemontestframework import automation_fixture
-import secrets
 from apps.spotify_mood_lights_sync.spotify_mood_lights_sync import SpotifyMoodLightsSync
 
 
 @automation_fixture(SpotifyMoodLightsSync)
 def uut(given_that):
-    given_that.passed_arg('client_id').is_set_to(secrets.CLIENT_ID)
-    given_that.passed_arg('client_secret').is_set_to(secrets.CLIENT_SECRET)
+    given_that.passed_arg('client_id').is_set_to("TEST_CLIENT_ID")
+    given_that.passed_arg('client_secret').is_set_to("TEST_CLIENT_SECRET")
     given_that.passed_arg('media_player').is_set_to('media_player.spotify_test')
     given_that.passed_arg('light').is_set_to('light.test_light')
 
