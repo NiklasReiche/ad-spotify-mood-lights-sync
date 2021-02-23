@@ -3,15 +3,44 @@ name: Validate
 on:
   push:
   pull_request:
-  schedule:
-    - cron: "0 0 * * *"
 
 jobs:
   validate:
+    name: Validate HACS App
     runs-on: "ubuntu-latest"
     steps:
-      - uses: "actions/checkout@v2"
+      - name: Checkout
+        uses: "actions/checkout@v2"
+
+      - name: Ignore issues and topics for non-main branch
+        if: github.ref != 'refs/heads/master'
+        run: echo 'IGNORE=issues topics' >> "$GITHUB_ENV"
+
       - name: HACS validation
         uses: "hacs/action@main"
         with:
           category: "appdaemon"
+          comment: "false"
+          ignore: "${{ env.IGNORE }}"
+
+  tests:
+    name: Tests & Linting
+    runs-on: "ubuntu-latest"
+    steps:
+      - name: Checkout
+        uses: "actions/checkout@v2"
+
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: "3.9"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run pytest
+        run: pytest
+
+      - name: Run linting with autopep8
+        if: always()
+        run: autopep8 --diff --recursive --exit-code .
