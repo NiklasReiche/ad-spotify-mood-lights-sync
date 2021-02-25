@@ -8,22 +8,32 @@ _AppDaemon app that synchronizes rgb lights to the mood of the currently playing
 
 This app uses the Spotify API to extract the emotional mood value of the currently playing track. Each mood value lies on a 2D plane which is mapped to a color spectrum from which the rgb color for the light is picked.
 
-The default color map used by the app looks as follows. The horizontal axis ranges from negative (left) to positive (right) emotion while the vertical axis ranges from weak (bottom) to high (top) energy. A sad, slow song is thus mapped to blue light while a happy, upbeat song is mapped to yellow light.
+The default color map used by the app looks as follows. The horizontal axis ranges from negative (left) to positive (right) emotion while the vertical axis ranges from low (bottom) to high (top) energy. A sad, slow song is thus mapped to blue light while a happy, upbeat song is mapped to yellow light.
 
-<img src="https://github.com/NiklasReiche/ha-spotify-lights-sync/blob/master/examples/default_profile.png" alt="default color profile" width="200">
+<img src="https://github.com/NiklasReiche/ha-spotify-lights-sync/blob/master/examples/default_profile_plot.png" alt="default color profile" width=500>
 
 ## Prerequisites
 
 For this app to work, the following python packages must be installed in the AppDaemon environment:
 
-- spotipy
-- numpy
+```yaml
+python_packages:
+  - spotipy
+  - numpy
+```
 
-If you wish to view the color map currently in use for debugging color profiles, you additionally need the following python package:
+#### Optional packages
 
-- Pillow
+If you wish to view the color map currently in use, e.g. for debugging custom color profiles, you additionally need the following packages. These are, however, _not_ needed for standard app operation:
 
-You may need to also specify the following system packages depending on your system setup:
+```yaml
+python_packages:
+  - Pillow
+system_packages:
+  - py3-pillow
+```
+
+If `py3-pillow` does not work for you (Supervisor installs are currently untested), you can try adding the following packages instead:
 
 ```yaml
 system_packages:
@@ -31,13 +41,9 @@ system_packages:
   - tiff
 ```
 
-## Issues
-
-Since the Spotify integration in Home Assistant only polls the Spotify API every 30 seconds or so to detect when the currently playing song changes, the light synchronization may be delayed by up to 30 seconds in the worst case.
-
 ## Installation
 
-Use [HACS](https://hacs.xyz/) or download the `spotify_mood_lights_sync` directory from inside the `apps` directory here to your local `apps` directory, then add the configuration to enable the `spotify_mood_lights_sync` module.
+Use [HACS](https://hacs.xyz/) or download the `spotify_mood_lights_sync` directory from inside the `apps` directory here to your local `apps` directory, then add the configuration to your `config/appdaemon/apps/apps.yaml`.
 
 #### Minimal configuration:
 
@@ -51,7 +57,11 @@ spotify_mood_lights_sync:
   light: light.bedroom
 ```
 
-## App configuration
+## Issues
+
+Since the Spotify integration in Home Assistant only polls the Spotify API every 30 seconds or so to detect when the currently playing song changes, the light synchronization may be delayed by up to 30 seconds in the worst case.
+
+## Full app configuration
 
 ```yaml
 spotify_mood_lights_sync:
