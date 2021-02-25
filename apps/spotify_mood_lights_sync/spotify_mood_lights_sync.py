@@ -64,12 +64,17 @@ class SpotifyMoodLightsSync(hass.Hass):
             color_map = CENTERED_PROFILE
         elif color_profile == 'custom':
             custom_profile = self.args.get('custom_profile')
-            if custom_profile is not None:
-                color_map = [(x['point'], x['color']) for x in custom_profile]
+            if custom_profile:
+                try:
+                    color_map = [(x['point'], x['color']) for x in custom_profile]
+                    assert all([len(p) == 2 and len(c) == 3 for p, c in color_map])
+                except (KeyError, AssertionError):
+                    self.error("Profile set to 'custom' but 'custom_profile' is malformed, falling back to the default "
+                               "profile", level='WARNING')
+                    color_map = DEFAULT_PROFILE
             else:
-                self.error("Profile set to 'custom' but no 'custom_profile' specified in config, falling back to the "
-                           "default profile",
-                           level="WARNING")
+                self.error("Profile set to 'custom' but no 'custom_profile' specified in app config, falling back to "
+                           "the default profile", level='WARNING')
                 color_map = DEFAULT_PROFILE
 
         self.color_map_points: List[Point] = [x[0] for x in color_map]
@@ -78,10 +83,18 @@ class SpotifyMoodLightsSync(hass.Hass):
         # output color map as image for debugging
         color_map_image = self.args.get("color_map_image")
         if color_map_image is not None:
-            from PIL import Image
-            size = color_map_image['size']
-            im = Image.fromarray(self.create_2d_color_map(size, size))
-            im.save(color_map_image['location'])
+            size = color_map_image.get('size')
+            location = color_map_image.get('location')
+            if size and location:
+                from PIL import Image
+                im = Image.fromarray(self.create_2d_color_map(size, size))
+                try:
+                    im.save(location)
+                except OSError as e:
+                    self.error(f"could not write image to path {location},\n reason: {e.strerror}")
+            else:
+                self.error("'color_map_image' specified, but 'size' or 'location' not specified in app config, "
+                           "skipping image generation", level='WARNING')
 
         # register callback
         media_player = self.args.get('media_player')

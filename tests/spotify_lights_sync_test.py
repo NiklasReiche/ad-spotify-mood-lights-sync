@@ -1,5 +1,6 @@
 import contextlib
 import pytest
+import os
 from appdaemontestframework import automation_fixture
 from apps.spotify_mood_lights_sync.spotify_mood_lights_sync import SpotifyMoodLightsSync
 from spotipy import Spotify
@@ -181,3 +182,14 @@ class TestSetupErrors:
             given_that.passed_arg('media_player').is_set_to('media_player.spotify_test')
 
         assert len(hass_errors()) == 1
+
+
+class TestImageOutput:
+    def test_default_output(self, given_that, update_passed_args):
+        with update_passed_args():
+            given_that.passed_arg('color_map_image').is_set_to({'size': 50, 'location': './out.png'})
+
+        assert os.path.isfile('./out.png')
+
+        if os.path.isfile('./out.png'):
+            os.remove('./out.png')
