@@ -40,16 +40,17 @@ class SpotifyMoodLightsSync(hass.Hass):
         self.light = self.args.get('light')
         if not self.light:
             self.error("'light' not specified in app config", level='WARNING')
+        self.initial_light_state = None
 
         # setup spotify component
         client_id = self.args.get('client_id')
         if not client_id:
-            self.error("Spotify 'client_id' not specified in app config", level='ERROR')
+            self.error("Spotify 'client_id' not specified in app config. Aborting startup", level='ERROR')
             return
 
         client_secret = self.args.get('client_secret')
         if not client_secret:
-            self.error("Spotify 'client_secret' not specified in app config", level='ERROR')
+            self.error("Spotify 'client_secret' not specified in app config. Aborting startup", level='ERROR')
             return
 
         client_credentials_manager = SpotifyClientCredentials(client_id=client_id, client_secret=client_secret)
@@ -69,11 +70,11 @@ class SpotifyMoodLightsSync(hass.Hass):
                     color_map = [(x['point'], x['color']) for x in custom_profile]
                     assert all([len(p) == 2 and len(c) == 3 for p, c in color_map])
                 except (KeyError, AssertionError):
-                    self.error("Profile set to 'custom' but 'custom_profile' is malformed, falling back to the default "
+                    self.error("Profile set to 'custom' but 'custom_profile' is malformed. Falling back to the default "
                                "profile", level='WARNING')
                     color_map = DEFAULT_PROFILE
             else:
-                self.error("Profile set to 'custom' but no 'custom_profile' specified in app config, falling back to "
+                self.error("Profile set to 'custom' but no 'custom_profile' specified in app config. Falling back to "
                            "the default profile", level='WARNING')
                 color_map = DEFAULT_PROFILE
 
@@ -91,24 +92,33 @@ class SpotifyMoodLightsSync(hass.Hass):
                 try:
                     im.save(location)
                 except OSError as e:
-                    self.error(f"could not write image to path {location},\n reason: {e.strerror}")
+                    self.error(f"could not write image to path {location}. Reason: {e.strerror}", level='WARNING')
             else:
-                self.error("'color_map_image' specified, but 'size' or 'location' not specified in app config, "
-                           "skipping image generation", level='WARNING')
+                self.error("'color_map_image' specified, but 'size' or 'location' not specified in app config. "
+                           "Skipping image generation", level='WARNING')
 
         # register callback
         media_player = self.args.get('media_player')
         if not media_player:
-            self.error("'media_player' not specified in app config", level='ERROR')
+            self.error("'media_player' not specified in app config. Aborting startup", level='ERROR')
             return
 
         self.listen_state(self.sync_lights, media_player, attribute='media_content_id')
-        self.log(f"Listening for state changes on {media_player}")
+        self.log(f"App started. Listening on {media_player}")
 
     def sync_lights(self, entity: str, attribute: str, old_uri: str, new_uri: str, kwargs) -> None:
         """Callback when the media_content_id has changed."""
         if new_uri is None or old_uri == new_uri:
             return
+
+        # if new_uri is None:
+        #    if self.initial_light_state is not None:
+        #        self.restore_initial_light_state()
+        #        self.initial_light_state = None
+        #    return
+
+        # if self.initial_light_state is None:
+        #    self.save_initial_light_state()
 
         # process color even if no light was specified, could be used for debugging
         color = self.color_from_uri(new_uri)
@@ -116,8 +126,7 @@ class SpotifyMoodLightsSync(hass.Hass):
         if self.light is None:
             return
 
-        light_kwargs = {'rgb_color': color}
-        self.turn_on(self.light, **light_kwargs)
+        self.turn_on(self.light, **{'rgb_color': color})
 
     def color_from_uri(self, track_uri: str) -> Color:
         """Get the color from a spotify track uri."""
@@ -127,7 +136,7 @@ class SpotifyMoodLightsSync(hass.Hass):
         energy: float = track_features['energy']
         color = self.color_for_point((valence, energy))
 
-        self.log(f"Got color {color} for valence {valence} and energy {energy} in track '{track_uri}'")
+        self.log(f"Got color {color} for valence {valence} and energy {energy} in track '{track_uri}'", level='DEBUG')
 
         return color
 
@@ -176,3 +185,13 @@ class SpotifyMoodLightsSync(hass.Hass):
                 color = self.color_for_point((p_x, p_y))
                 image[y, x] = color
         return np.flipud(image)
+
+    def save_initial_light_state(self):
+        self.initial_light_state = dict(self.get_state(self.light, attribute='all'))
+
+    def restore_initial_light_state(self):
+        if self.initial_light_state['state'] == 'on':
+            color = self.initial_light_state['attributes'].get('color', None)
+            self.turn_on(self.light, **({} if color is None else {'rgb_color': color}))
+        elif self.initial_light_state['state'] == 'off':
+            self.turn_off(self.light)

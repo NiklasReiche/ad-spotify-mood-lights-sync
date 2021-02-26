@@ -37,6 +37,8 @@ def uut(given_that):
     given_that.passed_arg('media_player').is_set_to('media_player.spotify_test')
     given_that.passed_arg('light').is_set_to('light.test_light')
 
+    given_that.state_of('light.test_light').is_set_to('on', attributes={'color': (255, 255, 255)})
+
 
 @automation_fixture(SpotifyMoodLightsSync)
 def uut_empty():
@@ -121,9 +123,10 @@ class TestColorChange:
         assert len(hass_mocks.hass_functions["turn_on"].call_args_list) == 1
 
         given_that.mock_functions_are_cleared()
-
         player.update_state('off', {})
+
         assert_that('light.test_light').was_not.turned_on()
+        # assert_that('light.test_light').was.turned_on(rgb_color=(255, 255, 255))
 
     @patch.object(Spotify, 'audio_features', new=mock_audio_features)
     def test_custom_color_profile(self, given_that, media_player, assert_that, update_passed_args):
