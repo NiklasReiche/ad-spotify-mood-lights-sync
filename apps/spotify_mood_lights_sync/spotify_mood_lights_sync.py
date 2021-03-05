@@ -4,6 +4,7 @@ import math
 import numpy as np
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
+import requests
 
 from typing import Tuple, List
 
@@ -121,7 +122,11 @@ class SpotifyMoodLightsSync(hass.Hass):
         #    self.save_initial_light_state()
 
         # process color even if no light was specified, could be used for debugging
-        color = self.color_from_uri(new_uri)
+        try:
+            color = self.color_from_uri(new_uri)
+        except requests.exceptions.ConnectionError as e:
+            self.error(f"Could not reach Spotify API, skipping track. Reason: {e}", level='WARNING')
+            return
 
         if self.light is None:
             return
@@ -131,7 +136,18 @@ class SpotifyMoodLightsSync(hass.Hass):
     def color_from_uri(self, track_uri: str) -> Color:
         """Get the color from a spotify track uri."""
 
-        track_features = self.sp.audio_features(track_uri)[0]
+        retries = 1
+        while True:
+            try:
+                track_features = self.sp.audio_features(track_uri)[0]
+                break
+            except requests.exceptions.ConnectionError as e:
+                if retries == 0:
+                    raise e
+                else:
+                    self.error(f"Could not reach Spotify API, retrying {retries} more time(s)", level='WARNING')
+                    retries -= 1
+
         valence: float = track_features['valence']
         energy: float = track_features['energy']
         color = self.color_for_point((valence, energy))
