@@ -1,25 +1,10 @@
 import contextlib
-import pytest
 import os
 from appdaemontestframework import automation_fixture
 from apps.spotify_mood_lights_sync.spotify_mood_lights_sync import SpotifyMoodLightsSync
 from spotipy import Spotify
 from unittest.mock import patch
-
-TRACKS = {
-    "min_min": {"valence": 0, "energy": 0},
-    "min_max": {"valence": 0, "energy": 1},
-    "max_min": {"valence": 1, "energy": 0},
-    "max_max": {"valence": 1, "energy": 1},
-    "center": {"valence": 0.5, "energy": 0.5},
-}
-
-CUSTOM_PROFILE = [
-    {'point': [0, 0], 'color': [0, 0, 255]},
-    {'point': [1, 0], 'color': [0, 255, 0]},
-    {'point': [0, 1], 'color': [255, 0, 0]},
-    {'point': [1, 1], 'color': [255, 255, 0]},
-]
+from test_utils import *
 
 
 def track_to_point(track_uri):
@@ -46,11 +31,6 @@ def uut_empty():
 
 
 @pytest.fixture
-def hass_errors(hass_mocks):
-    return lambda: [call[0][0] for call in hass_mocks.hass_functions["error"].call_args_list]
-
-
-@pytest.fixture
 def update_passed_args(uut):
     @contextlib.contextmanager
     def update_and_init():
@@ -70,7 +50,7 @@ def media_player(uut, given_that):
         def update_state(self, state, attributes):
             given_that.state_of(self.entity).is_set_to(state, attributes)
             new_uri = attributes.get('media_content_id', None)
-            uut.sync_lights(self.entity, 'media_content_id', self.old_uri, new_uri, None)
+            uut.sync_lights_from_spotify(self.entity, 'media_content_id', self.old_uri, new_uri, None)
             self.old_uri = new_uri
 
     return UpdateState
@@ -80,7 +60,7 @@ class TestCallbacksAreSet:
     def test_min_config(self, given_that, uut, assert_that):
         assert_that(uut). \
             listens_to.state('media_player.spotify_test', attribute='media_content_id'). \
-            with_callback(uut.sync_lights)
+            with_callback(uut.sync_lights_from_spotify)
 
     def test_custom_config(self, given_that, uut, assert_that, update_passed_args):
         with update_passed_args():
@@ -89,7 +69,7 @@ class TestCallbacksAreSet:
 
         assert_that(uut). \
             listens_to.state('media_player.spotify_test', attribute='media_content_id'). \
-            with_callback(uut.sync_lights)
+            with_callback(uut.sync_lights_from_spotify)
 
 
 class TestColorChange:

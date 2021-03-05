@@ -104,11 +104,14 @@ class SpotifyMoodLightsSync(hass.Hass):
             self.error("'media_player' not specified in app config. Aborting startup", level='ERROR')
             return
 
-        self.listen_state(self.sync_lights, media_player, attribute='media_content_id')
+        if not self.args.get('mode') or self.args['mode'] == 'direct':
+            self.listen_state(self.sync_lights_from_spotify, media_player, attribute='media_content_id')
+        elif self.args['mode'] == 'search':
+            self.listen_state(self.sync_lights_from_search, media_player, attribute='all')
+
         self.log(f"App started. Listening on {media_player}")
 
-    def sync_lights(self, entity: str, attribute: str, old_uri: str, new_uri: str, kwargs) -> None:
-        """Callback when the media_content_id has changed."""
+    def sync_lights_from_spotify(self, entity: str, attribute: str, old_uri: str, new_uri: str, kwargs) -> None:
         if new_uri is None or old_uri == new_uri:
             return
 
@@ -121,9 +124,43 @@ class SpotifyMoodLightsSync(hass.Hass):
         # if self.initial_light_state is None:
         #    self.save_initial_light_state()
 
-        # process color even if no light was specified, could be used for debugging
+        self.sync_light(new_uri)
+
+    def sync_lights_from_search(self, entity: str, attribute: str, old: dict, new: dict, kwargs) -> None:
+        title = new['attributes'].get('media_title')
+        artist = new['attributes'].get('media_artist')
+        old_title = old['attributes'].get('media_title')
+        old_artist = new['attributes'].get('media_artist')
+
+        if not title or not artist or old_title == title and old_artist == artist:
+            return
+
         try:
-            color = self.color_from_uri(new_uri)
+            results = self.sp.search(q=f'artist:{artist} track:{title}', type='track')
+        except requests.exceptions.ConnectionError as e:
+            self.error(f"Could not reach Spotify API, skipping track. Reason: {e}", level='WARNING')
+            return
+
+        if len(results['tracks']['items']) == 0:
+            self.log(f"Could not find track id for '{title}' by '{artist}'. Searching just by title...", level='INFO')
+
+            try:
+                results = self.sp.search(q=f'track:{title}', type='track')
+            except requests.exceptions.ConnectionError as e:
+                self.error(f"Could not reach Spotify API, skipping track. Reason: {e}", level='WARNING')
+                return
+
+            if len(results['tracks']['items']) == 0:
+                self.error(f"Could not find track id for '{title}'. Skipping track.", level='WARNING')
+                return
+
+        track_uri = results['tracks']['items'][0]['uri']
+        self.log(f"Found track id '{track_uri}' for '{title}' by '{artist}'", level='DEBUG')
+        self.sync_light(track_uri)
+
+    def sync_light(self, track_uri: str) -> None:
+        try:
+            color = self.color_from_uri(track_uri)
         except requests.exceptions.ConnectionError as e:
             self.error(f"Could not reach Spotify API, skipping track. Reason: {e}", level='WARNING')
             return
@@ -131,6 +168,7 @@ class SpotifyMoodLightsSync(hass.Hass):
         if self.light is None:
             return
 
+        # process color even if no light was specified, could be used for debugging
         self.turn_on(self.light, **{'rgb_color': color})
 
     def color_from_uri(self, track_uri: str) -> Color:
