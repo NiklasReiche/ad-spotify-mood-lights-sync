@@ -1,15 +1,17 @@
 import appdaemon.plugins.hass.hassapi as hass
 import math
+from functools import partial
 
 import numpy as np
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 import requests
 
-from typing import Tuple, List
+from typing import Tuple, List, TypeVar, Callable
 
 Color = Tuple[int, int, int]
 Point = Tuple[float, float]
+T = TypeVar('T')
 
 DEFAULT_PROFILE = [
     ((0.0, 0.5), (128, 0, 128)),  # disgust - purple
@@ -136,7 +138,7 @@ class SpotifyMoodLightsSync(hass.Hass):
             return
 
         try:
-            results = self.sp.search(q=f'artist:{artist} track:{title}', type='track')
+            results = self.call_api(partial(self.sp.search, q=f'artist:{artist} track:{title}', type='track'))
         except requests.exceptions.ConnectionError as e:
             self.error(f"Could not reach Spotify API, skipping track. Reason: {e}", level='WARNING')
             return
@@ -145,7 +147,7 @@ class SpotifyMoodLightsSync(hass.Hass):
             self.log(f"Could not find track id for '{title}' by '{artist}'. Searching just by title...", level='INFO')
 
             try:
-                results = self.sp.search(q=f'track:{title}', type='track')
+                results = self.call_api(partial(self.sp.search, q=f'track:{title}', type='track'))
             except requests.exceptions.ConnectionError as e:
                 self.error(f"Could not reach Spotify API, skipping track. Reason: {e}", level='WARNING')
                 return
@@ -174,17 +176,7 @@ class SpotifyMoodLightsSync(hass.Hass):
     def color_from_uri(self, track_uri: str) -> Color:
         """Get the color from a spotify track uri."""
 
-        retries = 1
-        while True:
-            try:
-                track_features = self.sp.audio_features(track_uri)[0]
-                break
-            except requests.exceptions.ConnectionError as e:
-                if retries == 0:
-                    raise e
-                else:
-                    self.error(f"Could not reach Spotify API, retrying {retries} more time(s)", level='WARNING')
-                    retries -= 1
+        track_features = self.call_api(partial(self.sp.audio_features, track_uri))[0]
 
         valence: float = track_features['valence']
         energy: float = track_features['energy']
@@ -249,3 +241,15 @@ class SpotifyMoodLightsSync(hass.Hass):
             self.turn_on(self.light, **({} if color is None else {'rgb_color': color}))
         elif self.initial_light_state['state'] == 'off':
             self.turn_off(self.light)
+
+    def call_api(self, func: Callable[[], T]) -> T:
+        retries = 1
+        while True:
+            try:
+                return func()
+            except requests.exceptions.ConnectionError as e:
+                if retries == 0:
+                    raise e
+                else:
+                    self.error(f"Could not reach Spotify API, retrying {retries} more time(s)", level='WARNING')
+                    retries -= 1
