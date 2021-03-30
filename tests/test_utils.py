@@ -1,6 +1,8 @@
 import pytest
 import re
 
+import requests
+
 TRACKS = {
     "min_min": {"valence": 0, "energy": 0},
     "min_max": {"valence": 0, "energy": 1},
@@ -23,15 +25,47 @@ CUSTOM_PROFILE = [
 ]
 
 
+class NetworkState:
+    def __init__(self):
+        self.tries = 0
+        self.is_on = False
+        self.n_errors = -1
+
+    def reset(self):
+        self.tries = 0
+
+    def inc(self):
+        self.tries += 1
+        if self.is_on and (self.n_errors == -1 or self.tries <= self.n_errors):
+            raise requests.exceptions.ConnectionError
+
+    def turn_on_errors(self, n_errors=-1):
+        self.reset()
+        self.n_errors = n_errors
+        self.is_on = True
+
+    def turn_off_errors(self):
+        self.is_on = False
+
+
+NETWORK_STATE = NetworkState()
+
+
 def track_to_point(track_uri):
     return TRACKS[track_uri]['valence'], TRACKS[track_uri]['energy']
 
 
 def mock_audio_features(_, track_uri):
+    NETWORK_STATE.inc()
+
+    if track_uri not in TRACKS:
+        return [None]
     return [TRACKS[track_uri]]
 
 
 def mock_search(_, q, type):
+    NETWORK_STATE.inc()
+
     groups = re.match(r"artist:(.*)track:(.*)", q).groups()
     if len(groups) == 1:
         pass

@@ -35,7 +35,7 @@ CENTERED_PROFILE = [
 
 
 class SpotifyMoodLightsSync(hass.Hass):
-    """SpotifyLightsSync class."""
+    """SpotifyMoodLightsSync class."""
 
     def initialize(self) -> None:
         """Initialize the app and listen for media_player media_content_id changes."""
@@ -59,10 +59,12 @@ class SpotifyMoodLightsSync(hass.Hass):
         client_credentials_manager = SpotifyClientCredentials(client_id=client_id, client_secret=client_secret)
         self.sp = spotipy.Spotify(client_credentials_manager=client_credentials_manager)
 
+        self.max_retries = self.args.get('max_retries', 1)
+
         # setup color profile
         color_map = []
-        color_profile = self.args.get('color_profile')
-        if color_profile is None or color_profile == 'default':
+        color_profile = self.args.get('color_profile', 'default')
+        if color_profile == 'default':
             color_map = DEFAULT_PROFILE
         elif color_profile == 'centered':
             color_map = CENTERED_PROFILE
@@ -106,7 +108,7 @@ class SpotifyMoodLightsSync(hass.Hass):
             self.error("'media_player' not specified in app config. Aborting startup", level='ERROR')
             return
 
-        if not self.args.get('mode') or self.args['mode'] == 'direct':
+        if self.args.get('mode', 'direct') == 'direct':
             self.listen_state(self.sync_lights_from_spotify, media_player, attribute='media_content_id')
         elif self.args['mode'] == 'search':
             self.listen_state(self.sync_lights_from_search, media_player, attribute='all')
@@ -250,7 +252,7 @@ class SpotifyMoodLightsSync(hass.Hass):
             self.turn_off(self.light)
 
     def call_api(self, func: Callable[[], T]) -> T:
-        retries = 1
+        retries = self.max_retries
         while True:
             try:
                 return func()

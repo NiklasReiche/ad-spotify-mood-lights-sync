@@ -7,16 +7,6 @@ from unittest.mock import patch
 from test_utils import *
 
 
-def track_to_point(track_uri):
-    return TRACKS[track_uri]['valence'], TRACKS[track_uri]['energy']
-
-
-def mock_audio_features(_, track_uri):
-    if track_uri not in TRACKS:
-        return [None]
-    return [TRACKS[track_uri]]
-
-
 @automation_fixture(SpotifyMoodLightsSync)
 def uut(given_that):
     given_that.passed_arg('client_id').is_set_to("_")
@@ -184,3 +174,42 @@ class TestImageOutput:
 
         if os.path.isfile('./out.png'):
             os.remove('./out.png')
+
+
+class TestRetries:
+    @patch.object(Spotify, 'audio_features', new=mock_audio_features)
+    def test_retries_default(self, media_player):
+        NETWORK_STATE.turn_on_errors()
+        media_player('media_player.spotify_test').update_state('playing', {'media_content_id': 'min_min'})
+
+        assert NETWORK_STATE.tries == 2
+
+    @patch.object(Spotify, 'audio_features', new=mock_audio_features)
+    def test_retries_custom(self, given_that, update_passed_args, media_player):
+        with update_passed_args():
+            given_that.passed_arg('max_retries').is_set_to(4)
+
+        NETWORK_STATE.turn_on_errors()
+        media_player('media_player.spotify_test').update_state('playing', {'media_content_id': 'min_min'})
+
+        assert NETWORK_STATE.tries == 5
+
+    @patch.object(Spotify, 'audio_features', new=mock_audio_features)
+    def test_retries_zero(self, given_that, update_passed_args, media_player):
+        with update_passed_args():
+            given_that.passed_arg('max_retries').is_set_to(0)
+
+        NETWORK_STATE.turn_on_errors()
+        media_player('media_player.spotify_test').update_state('playing', {'media_content_id': 'min_min'})
+
+        assert NETWORK_STATE.tries == 1
+
+    @patch.object(Spotify, 'audio_features', new=mock_audio_features)
+    def test_retries_pass(self, given_that, update_passed_args, media_player):
+        with update_passed_args():
+            given_that.passed_arg('max_retries').is_set_to(4)
+
+        NETWORK_STATE.turn_on_errors(n_errors=2)
+        media_player('media_player.spotify_test').update_state('playing', {'media_content_id': 'min_min'})
+
+        assert NETWORK_STATE.tries == 3
