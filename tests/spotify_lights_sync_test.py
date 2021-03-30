@@ -12,6 +12,8 @@ def track_to_point(track_uri):
 
 
 def mock_audio_features(_, track_uri):
+    if track_uri not in TRACKS:
+        return [None]
     return [TRACKS[track_uri]]
 
 
@@ -134,7 +136,7 @@ class TestSetupErrors:
 
         return update_and_init
 
-    def test_missing_client_id(self, given_that, assert_that, update_passed_args_empty, hass_errors, uut_empty):
+    def test_missing_client_id(self, given_that, assert_that, update_passed_args_empty, hass_errors):
         with update_passed_args_empty():
             given_that.passed_arg('client_secret').is_set_to('_')
             given_that.passed_arg('media_player').is_set_to('media_player.spotify_test')
@@ -142,7 +144,7 @@ class TestSetupErrors:
 
         assert len(hass_errors()) == 1
 
-    def test_missing_client_secret(self, given_that, assert_that, update_passed_args_empty, hass_errors, uut_empty):
+    def test_missing_client_secret(self, given_that, assert_that, update_passed_args_empty, hass_errors):
         with update_passed_args_empty():
             given_that.passed_arg('client_id').is_set_to('_')
             given_that.passed_arg('media_player').is_set_to('media_player.spotify_test')
@@ -150,7 +152,7 @@ class TestSetupErrors:
 
         assert len(hass_errors()) == 1
 
-    def test_missing_media_player(self, given_that, assert_that, update_passed_args_empty, hass_errors, uut_empty):
+    def test_missing_media_player(self, given_that, assert_that, update_passed_args_empty, hass_errors):
         with update_passed_args_empty():
             given_that.passed_arg('client_id').is_set_to('_')
             given_that.passed_arg('client_secret').is_set_to('_')
@@ -158,11 +160,17 @@ class TestSetupErrors:
 
         assert len(hass_errors()) == 1
 
-    def test_missing_light(self, given_that, assert_that, update_passed_args_empty, hass_errors, uut_empty):
+    def test_missing_light(self, given_that, assert_that, update_passed_args_empty, hass_errors):
         with update_passed_args_empty():
             given_that.passed_arg('client_id').is_set_to('_')
             given_that.passed_arg('client_secret').is_set_to('_')
             given_that.passed_arg('media_player').is_set_to('media_player.spotify_test')
+
+        assert len(hass_errors()) == 1
+
+    @patch.object(Spotify, 'audio_features', new=mock_audio_features)
+    def test_direct_mode_with_wrong_media_content_id(self, given_that, assert_that, hass_errors, media_player):
+        media_player('media_player.spotify_test').update_state('playing', {'media_content_id': 'not_found'})
 
         assert len(hass_errors()) == 1
 

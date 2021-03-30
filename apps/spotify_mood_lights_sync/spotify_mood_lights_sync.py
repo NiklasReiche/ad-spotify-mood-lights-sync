@@ -166,17 +166,24 @@ class SpotifyMoodLightsSync(hass.Hass):
         except requests.exceptions.ConnectionError as e:
             self.error(f"Could not reach Spotify API, skipping track. Reason: {e}", level='WARNING')
             return
+        except ValueError as e:
+            self.error(f"Could not find features for track uri {track_uri}. This may be caused by trying to use a "
+                       f"non-spotify media_player in 'direct' mode. Try using 'search' mode instead.\n"
+                       f"Reason: {e}", level='ERROR')
+            return
 
+        # color is processed even if no light was specified, could be used for debugging
         if self.light is None:
             return
 
-        # process color even if no light was specified, could be used for debugging
         self.turn_on(self.light, **{'rgb_color': color})
 
     def color_from_uri(self, track_uri: str) -> Color:
         """Get the color from a spotify track uri."""
 
         track_features = self.call_api(partial(self.sp.audio_features, track_uri))[0]
+        if not track_features:
+            raise ValueError("no track features found for uri")
 
         valence: float = track_features['valence']
         energy: float = track_features['energy']

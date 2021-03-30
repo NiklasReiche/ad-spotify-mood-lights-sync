@@ -58,14 +58,21 @@ spotify_mood_lights_sync:
 
 The app supports media players from the spotify integration as well as generic media players.
 
-### Spotify media player
+### Spotify media player (direct mode)
 
-Using a spotify media player is the default and thus no special config options must be set.
+Using a spotify media player is the default and thus no special config options must be set. Note that only the 
+media players directly provided by the spotify integration will work in this mode.<sup id="sp-player">[1](#sp-player-note)</sup>
+For other integrations, e.g. Sonos speakers, this may not work, and you should use 
+[search mode](#generic-media-player-search-mode) instead.
 
 Since the Spotify integration in Home Assistant only polls the Spotify API every 30 seconds to detect when the currently
 playing song changes, the light synchronization may be delayed by up to 30 seconds in the worst case.
 
-### Generic media player
+<b id="sp-player-note">[1](#sp-player)</b>: This mode is reliant on the `media_content_id` attribute of the 
+`media_player` containing the spotify track id (e.g. `spotify:track:abcdefghijkl`) for the current song. If your 
+non-spotify media player supports this, you can also use direct mode.
+
+### Generic media player (search mode)
 
 The app can also listen on all non-spotify media players that support the `media_title` and `media_artist` state
 attributes. In order to use such a player, add the `mode: search` option to the app config. In this mode the app tries
