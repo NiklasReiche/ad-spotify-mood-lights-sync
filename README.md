@@ -17,7 +17,7 @@ to blue light while a happy, upbeat song is mapped to yellow light.
 
 ## Prerequisites
 
-For this app to work, the following python packages must be installed in the AppDaemon environment:
+For this app to work, the following python packages must be installed in the [AppDaemon environment](https://github.com/hassio-addons/addon-appdaemon/blob/main/appdaemon/DOCS.md#configuration):
 
 ```yaml
 python_packages:
