@@ -2,16 +2,16 @@ import appdaemon.plugins.hass.hassapi as hass
 import math
 from functools import partial
 
-import numpy as np
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
-import requests
+from requests.exceptions import ConnectionError
 
-from typing import Tuple, List, TypeVar, Callable
+from typing import Tuple, List, TypeVar, Callable, Iterable
 
 Color = Tuple[int, int, int]
 Point = Tuple[float, float]
 T = TypeVar('T')
+Num = TypeVar('Num', int, float)
 
 DEFAULT_PROFILE = [
     ((0.0, 0.5), (128, 0, 128)),  # disgust - purple
@@ -84,7 +84,9 @@ class SpotifyMoodLightsSync(hass.Hass):
                 color_map = DEFAULT_PROFILE
 
         self.color_map_points: List[Point] = [x[0] for x in color_map]
-        self.color_map_colors: List[Color] = [x[1] for x in color_map]
+        self.color_map_colors: tuple[List[int], List[int], List[int]] = ([x[1][0] for x in color_map],
+                                                                         [x[1][1] for x in color_map],
+                                                                         [x[1][2] for x in color_map])
 
         # output color map as image for debugging
         color_map_image = self.args.get("color_map_image")
@@ -93,7 +95,8 @@ class SpotifyMoodLightsSync(hass.Hass):
             location = color_map_image.get('location')
             if size and location:
                 from PIL import Image
-                im = Image.fromarray(self.create_2d_color_map(size, size))
+                im = Image.new("RGB", (size, size))
+                im.putdata(self.create_2d_color_map(size, size))
                 try:
                     im.save(location)
                 except OSError as e:
@@ -141,7 +144,7 @@ class SpotifyMoodLightsSync(hass.Hass):
 
         try:
             results = self.call_api(partial(self.sp.search, q=f'artist:{artist} track:{title}', type='track'))
-        except requests.exceptions.ConnectionError as e:
+        except ConnectionError as e:
             self.error(f"Could not reach Spotify API, skipping track. Reason: {e}", level='WARNING')
             return
 
@@ -150,7 +153,7 @@ class SpotifyMoodLightsSync(hass.Hass):
 
             try:
                 results = self.call_api(partial(self.sp.search, q=f'track:{title}', type='track'))
-            except requests.exceptions.ConnectionError as e:
+            except ConnectionError as e:
                 self.error(f"Could not reach Spotify API, skipping track. Reason: {e}", level='WARNING')
                 return
 
@@ -165,7 +168,7 @@ class SpotifyMoodLightsSync(hass.Hass):
     def sync_light(self, track_uri: str) -> None:
         try:
             color = self.color_from_uri(track_uri)
-        except requests.exceptions.ConnectionError as e:
+        except ConnectionError as e:
             self.error(f"Could not reach Spotify API, skipping track. Reason: {e}", level='WARNING')
             return
         except ValueError as e:
@@ -203,43 +206,54 @@ class SpotifyMoodLightsSync(hass.Hass):
         :return: interpolated RGB color for the input point as [r, g, b]
         """
 
-        # compute new RGB value as inverse distance weighted sum:
-        distances = np.array([math.dist(point, p) for p in self.color_map_points])
-        weights = np.expand_dims(1 / (distances + 1E-6), axis=1)
-        colors = np.array(self.color_map_colors)
+        def mul_array(list_a: list[int], list_b: list[float]) -> list[float]:
+            return [ab[0] * ab[1] for ab in zip(list_a, list_b)]
 
-        color = np.sum(colors * weights, axis=0) / np.sum(weights)
+        def mul_scalar(list_a: Iterable[Num], scalar: float) -> list[Num]:
+            return [x * scalar for x in list_a]
+
+        def inv_dist_weighted_sum(v: list[int], w: list[float]) -> float:
+            return sum(mul_array(v, w)) / sum(weights)
+
+        distances = [math.dist(point, p) for p in self.color_map_points]
+        weights = [1 / (d + 1E-6) for d in distances]
+
+        # compute new RGB value as inverse distance weighted sum:
+        red = inv_dist_weighted_sum(self.color_map_colors[0], weights)
+        green = inv_dist_weighted_sum(self.color_map_colors[1], weights)
+        blue = inv_dist_weighted_sum(self.color_map_colors[2], weights)
+        color = (red, green, blue)
 
         # brighten color spectrum
-        sum_color = np.sum(color)
+        sum_color, max_color = sum(color), max(color)
         required_sum_color = 600.0
-        if color.max() * (required_sum_color / sum_color) <= 255:
-            color *= (required_sum_color / sum_color)
+        if max_color * (required_sum_color / sum_color) <= 255:
+            color = mul_scalar(color, required_sum_color / sum_color)
         else:
-            color *= (255 / color.max())
+            color = mul_scalar(color, 255 / max_color)
 
-        return tuple(color.astype('uint8'))
+        return int(color[0]), int(color[1]), int(color[2])
 
-    def create_2d_color_map(self, height: int, width: int) -> np.array:
+    def create_2d_color_map(self, height: int, width: int) -> list[Color]:
         """Creates an image of the color map in use.
 
         :param height: height of the output image in pixels
         :param width: width of the output image in pixels
 
-        :return: RGB image of the color plane as numpy array with shape (height, width, 3)
+        :return: RGB image of the color plane as a flat list of pixel tuples
         """
 
         def normalize(v, in_min, in_max, out_min, out_max):
             return (out_max - out_min) / (in_max - in_min) * (v - in_min) + out_min
 
-        image = np.zeros((height, width, 3)).astype('uint8')
-        for y in range(0, height):
+        image = []
+        for y in reversed(range(0, height)):
             for x in range(0, width):
                 p_y = normalize(y, 0, height - 1, 0, 1)
                 p_x = normalize(x, 0, width - 1, 0, 1)
                 color = self.color_for_point((p_x, p_y))
-                image[y, x] = color
-        return np.flipud(image)
+                image.append(color)
+        return image
 
     def save_initial_light_state(self):
         self.initial_light_state = dict(self.get_state(self.light, attribute='all'))
@@ -256,7 +270,7 @@ class SpotifyMoodLightsSync(hass.Hass):
         while True:
             try:
                 return func()
-            except requests.exceptions.ConnectionError as e:
+            except ConnectionError as e:
                 if retries == 0:
                     raise e
                 else:

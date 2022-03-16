@@ -2,5 +2,4 @@ appdaemontestframework
 autopep8
 pytest
 spotipy
-numpy
 Pillow
