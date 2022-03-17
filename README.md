@@ -17,13 +17,11 @@ to blue light while a happy, upbeat song is mapped to yellow light.
 
 ## Prerequisites
 
-For this app to work, the following python and system packages must be installed in the [AppDaemon environment](https://github.com/hassio-addons/addon-appdaemon/blob/main/appdaemon/DOCS.md#configuration):
+For this app to work, the following python package must be installed in the [AppDaemon environment](https://github.com/hassio-addons/addon-appdaemon/blob/main/appdaemon/DOCS.md#configuration):
 
 ```yaml
 python_packages:
   - spotipy
-system_packages:
-  - py3-numpy
 ```
 
 #### Optional packages
