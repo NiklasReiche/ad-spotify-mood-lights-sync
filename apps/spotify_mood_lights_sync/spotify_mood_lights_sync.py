@@ -84,7 +84,7 @@ class SpotifyMoodLightsSync(hass.Hass):
                 color_map = DEFAULT_PROFILE
 
         self.color_map_points: List[Point] = [x[0] for x in color_map]
-        self.color_map_colors: tuple[List[int], List[int], List[int]] = ([x[1][0] for x in color_map],
+        self.color_map_colors: Tuple[List[int], List[int], List[int]] = ([x[1][0] for x in color_map],
                                                                          [x[1][1] for x in color_map],
                                                                          [x[1][2] for x in color_map])
 
@@ -206,13 +206,13 @@ class SpotifyMoodLightsSync(hass.Hass):
         :return: interpolated RGB color for the input point as [r, g, b]
         """
 
-        def mul_array(list_a: list[int], list_b: list[float]) -> list[float]:
+        def mul_array(list_a: List[int], list_b: List[float]) -> List[float]:
             return [ab[0] * ab[1] for ab in zip(list_a, list_b)]
 
-        def mul_scalar(list_a: Iterable[Num], scalar: float) -> list[Num]:
+        def mul_scalar(list_a: Iterable[Num], scalar: float) -> List[Num]:
             return [x * scalar for x in list_a]
 
-        def inv_dist_weighted_sum(v: list[int], w: list[float]) -> float:
+        def inv_dist_weighted_sum(v: List[int], w: List[float]) -> float:
             return sum(mul_array(v, w)) / sum(weights)
 
         distances = [math.dist(point, p) for p in self.color_map_points]
@@ -234,7 +234,7 @@ class SpotifyMoodLightsSync(hass.Hass):
 
         return int(color[0]), int(color[1]), int(color[2])
 
-    def create_2d_color_map(self, height: int, width: int) -> list[Color]:
+    def create_2d_color_map(self, height: int, width: int) -> List[Color]:
         """Creates an image of the color map in use.
 
         :param height: height of the output image in pixels
