@@ -68,13 +68,13 @@ class TestColorChange:
     @patch.object(Spotify, 'audio_features', new=mock_audio_features)
     def test_change(self, given_that, media_player, assert_that, uut):
         media_player('media_player.spotify_test').update_state('playing', {'media_content_id': 'min_min'})
-        color1 = uut.color_for_point(track_to_point('min_min'))
+        color1 = uut.color_for_point_rgb(track_to_point('min_min'))
         assert_that('light.test_light').was.turned_on(rgb_color=color1)
 
         given_that.mock_functions_are_cleared()
 
         media_player('media_player.spotify_test').update_state('playing', {'media_content_id': 'min_max'})
-        color2 = uut.color_for_point(track_to_point('min_max'))
+        color2 = uut.color_for_point_rgb(track_to_point('min_max'))
         assert_that('light.test_light').was.turned_on(rgb_color=color2)
 
         assert color1 != color2

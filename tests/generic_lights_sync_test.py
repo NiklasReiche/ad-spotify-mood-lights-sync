@@ -56,19 +56,19 @@ class TestColorChange:
     def test_change(self, given_that, media_player, assert_that, uut):
         media_player('media_player.generic_test').update_state('playing', {'media_title': 'song 1',
                                                                            'media_artist': 'artist 1'})
-        color1 = uut.color_for_point(track_to_point('min_min'))
+        color1 = uut.color_for_point_rgb(track_to_point('min_min'))
         assert_that('light.test_light').was.turned_on(rgb_color=color1)
 
         given_that.mock_functions_are_cleared()
 
         media_player('media_player.generic_test').update_state('playing', {'media_title': 'song 2',
                                                                            'media_artist': 'artist 2'})
-        color2 = uut.color_for_point(track_to_point('min_max'))
+        color2 = uut.color_for_point_rgb(track_to_point('min_max'))
         assert_that('light.test_light').was.turned_on(rgb_color=color2)
 
         media_player('media_player.generic_test').update_state('playing', {'media_title': 'song 1',
                                                                            'media_artist': 'artist 2'})
-        color3 = uut.color_for_point(track_to_point('max_max'))
+        color3 = uut.color_for_point_rgb(track_to_point('max_max'))
         assert_that('light.test_light').was.turned_on(rgb_color=color3)
 
         assert color1 != color2

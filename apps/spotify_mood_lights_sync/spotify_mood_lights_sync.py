@@ -32,6 +32,21 @@ CENTERED_PROFILE = [
     ((0.25, 0.25), (0, 0, 255)),  # sad - blue
     ((0.5, 0.5), (255, 241, 224)),  # neutral - neutral
 ]
+HSV_DEFAULT_PROFILE = [
+    ((0.0, 0.5), (300, 100, 100)),  # disgust - purple
+    ((0.1, 0.9), (0, 100, 100)),  # angry - red
+    ((0.5, 1.0), (40, 100, 100)),  # alert - orange
+    ((0.9, 0.9), (60, 100, 100)),  # happy - yellow
+    ((1.0, 0.4), (90, 100, 90)),
+    ((1.0, 0.0), (120, 100, 80)),  # calm - green
+    ((0.5, 0.0), (200, 100, 100)),  # relaxed - bluegreen
+    ((0.1, 0.1), (240, 100, 100)),  # sad - blue
+    #((0.5, 0.5), (180, 0, 100))
+]
+
+
+def normalize(v, in_min, in_max, out_min, out_max):
+    return (out_max - out_min) / (in_max - in_min) * (v - in_min) + out_min
 
 
 class SpotifyMoodLightsSync(hass.Hass):
@@ -68,6 +83,8 @@ class SpotifyMoodLightsSync(hass.Hass):
             color_map = DEFAULT_PROFILE
         elif color_profile == 'centered':
             color_map = CENTERED_PROFILE
+        elif color_profile == 'hsv_default':
+            color_map = HSV_DEFAULT_PROFILE
         elif color_profile == 'custom':
             custom_profile = self.args.get('custom_profile')
             if custom_profile:
@@ -95,8 +112,9 @@ class SpotifyMoodLightsSync(hass.Hass):
             location = color_map_image.get('location')
             if size and location:
                 from PIL import Image
-                im = Image.new("RGB", (size, size))
+                im = Image.new('HSV', (size, size))
                 im.putdata(self.create_2d_color_map(size, size))
+                im = im.convert('RGB')
                 try:
                     im.save(location)
                 except OSError as e:
@@ -192,13 +210,13 @@ class SpotifyMoodLightsSync(hass.Hass):
 
         valence: float = track_features['valence']
         energy: float = track_features['energy']
-        color = self.color_for_point((valence, energy))
+        color = self.color_for_point_rgb((valence, energy))
 
         self.log(f"Got color {color} for valence {valence} and energy {energy} in track '{track_uri}'", level='DEBUG')
 
         return color
 
-    def color_for_point(self, point: Point) -> Color:
+    def color_for_point_rgb(self, point: Point) -> Color:
         """Computes an RGB color value for a point on the color plane.
 
         :param point: coordinates in the range [0,1]X[0,1]
@@ -234,6 +252,46 @@ class SpotifyMoodLightsSync(hass.Hass):
 
         return int(color[0]), int(color[1]), int(color[2])
 
+    def color_for_point_hsv(self, point: Point) -> Color:
+        """Computes an HSV color value for a point on the color plane.
+
+        :param point: coordinates in the range [0,1]X[0,1]
+
+        :return: interpolated HSV color for the input point as [h, s, v]
+        """
+
+        def mul_array(list_a: List[Num], list_b: List[float]) -> List[float]:
+            return [ab[0] * ab[1] for ab in zip(list_a, list_b)]
+
+        def inv_dist_weighted_sum(v: List[Num], w: List[float]) -> float:
+            return sum(mul_array(v, w)) / sum_weights
+
+        distances = [math.dist(point, p) for p in self.color_map_points]
+        p = 1.8
+        weights = [1 / ((d + 1E-6)**p) for d in distances]
+        sum_weights = sum(weights)
+        colors = self.color_map_colors
+
+        # compute value and saturation with IDW:
+        value = min(100., inv_dist_weighted_sum(colors[2], weights))
+        saturation = min(100., inv_dist_weighted_sum(colors[1], weights))
+
+        # compute hue angle with IDW in cartesian coordinates:
+        hues_cart_x = [math.sin(math.radians(h)) for h in colors[0]]
+        hues_cart_y = [math.cos(math.radians(h)) for h in colors[0]]
+        hue_x = inv_dist_weighted_sum(hues_cart_x, weights)
+        hue_y = inv_dist_weighted_sum(hues_cart_y, weights)
+        hue = math.degrees(math.atan2(hue_x, hue_y))
+        hue = 360 + hue if hue < 0 else hue
+
+        assert 0 <= hue <= 360
+        assert 0 <= saturation <= 100
+        assert 0 <= value <= 100
+
+        return int(normalize(hue, 0, 360, 0, 255)), \
+            int(normalize(saturation, 0, 100, 0, 255)), \
+            int(normalize(value, 0, 100, 0, 255))
+
     def create_2d_color_map(self, height: int, width: int) -> List[Color]:
         """Creates an image of the color map in use.
 
@@ -243,15 +301,12 @@ class SpotifyMoodLightsSync(hass.Hass):
         :return: RGB image of the color plane as a flat list of pixel tuples
         """
 
-        def normalize(v, in_min, in_max, out_min, out_max):
-            return (out_max - out_min) / (in_max - in_min) * (v - in_min) + out_min
-
         image = []
         for y in reversed(range(0, height)):
             for x in range(0, width):
                 p_y = normalize(y, 0, height - 1, 0, 1)
                 p_x = normalize(x, 0, width - 1, 0, 1)
-                color = self.color_for_point((p_x, p_y))
+                color = self.color_for_point_hsv((p_x, p_y))
                 image.append(color)
         return image
 
