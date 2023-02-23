@@ -11,7 +11,7 @@ def uut(given_that):
     given_that.passed_arg('client_secret').is_set_to("_")
     given_that.passed_arg('media_player').is_set_to('media_player.spotify_test')
     given_that.passed_arg('light').is_set_to('light.test_light')
-    given_that.passed_arg('color_profile').is_set_to('hsv_default')
+    given_that.passed_arg('color_profile').is_set_to('default')
 
     given_that.state_of('light.test_light').is_set_to('on', attributes={'color': (255, 255, 255)})
 

@@ -1,3 +1,5 @@
+from enum import Enum
+
 import appdaemon.plugins.hass.hassapi as hass
 import math
 from functools import partial
@@ -45,8 +47,53 @@ HSV_DEFAULT_PROFILE = [
 ]
 
 
+class ColorMode(Enum):
+    RGB = 'RGB'
+    HSV = 'HSV'
+
+
+class ColorProfile:
+    def __init__(self, color_mode, data):
+        self.color_mode = color_mode
+        self.weight = 1
+        self.points: List[Point] = [x[0] for x in data]
+        self.colors: Tuple[List[int], List[int], List[int]] = ([x[1][0] for x in data],
+                                                               [x[1][1] for x in data],
+                                                               [x[1][2] for x in data])
+
+
+class RGBColorProfile(ColorProfile):
+    def __init__(self, data):
+        super().__init__(ColorMode.RGB, data)
+        self.weight = 2
+
+
+class HSVColorProfile(ColorProfile):
+    def __init__(self, data):
+        super().__init__(ColorMode.HSV, data)
+        self.weight = 1.5
+
+
 def normalize(v, in_min, in_max, out_min, out_max):
     return (out_max - out_min) / (in_max - in_min) * (v - in_min) + out_min
+
+
+def mul_array(list_a: List[int], list_b: List[float]) -> List[float]:
+    return [ab[0] * ab[1] for ab in zip(list_a, list_b)]
+
+
+def mul_scalar(list_a: Iterable[Num], scalar: float) -> List[Num]:
+    return [x * scalar for x in list_a]
+
+
+def inverse_distance_weights(point: Point, points: List[Point], local_weight=1.0):
+    distances = [math.dist(point, p) for p in points]
+    weights = [1 / ((d + 1E-6) ** local_weight) for d in distances]
+    return weights
+
+
+def interpolate(values: List[Num], weights: List[float]):
+    return sum(mul_array(values, weights)) / sum(weights)
 
 
 class SpotifyMoodLightsSync(hass.Hass):
@@ -77,15 +124,15 @@ class SpotifyMoodLightsSync(hass.Hass):
         self.max_retries = self.args.get('max_retries', 1)
 
         # setup color profile
-        color_map = []
-        color_profile = self.args.get('color_profile', 'default')
-        if color_profile == 'default':
-            color_map = DEFAULT_PROFILE
-        elif color_profile == 'centered':
-            color_map = CENTERED_PROFILE
-        elif color_profile == 'hsv_default':
-            color_map = HSV_DEFAULT_PROFILE
-        elif color_profile == 'custom':
+        color_profile_arg = self.args.get('color_profile', 'default')
+        if color_profile_arg == 'default':
+            self.color_profile = RGBColorProfile(DEFAULT_PROFILE)
+        elif color_profile_arg == 'centered':
+            self.color_profile = RGBColorProfile(CENTERED_PROFILE)
+        elif color_profile_arg == 'hsv_default':
+            self.color_profile = HSVColorProfile(HSV_DEFAULT_PROFILE)
+        elif color_profile_arg == 'custom':
+            # TODO
             custom_profile = self.args.get('custom_profile')
             if custom_profile:
                 try:
@@ -94,16 +141,12 @@ class SpotifyMoodLightsSync(hass.Hass):
                 except (KeyError, AssertionError):
                     self.error("Profile set to 'custom' but 'custom_profile' is malformed. Falling back to the default "
                                "profile", level='WARNING')
-                    color_map = DEFAULT_PROFILE
+                    self.color_profile = RGBColorProfile(DEFAULT_PROFILE)
             else:
                 self.error("Profile set to 'custom' but no 'custom_profile' specified in app config. Falling back to "
                            "the default profile", level='WARNING')
-                color_map = DEFAULT_PROFILE
+                self.color_profile = RGBColorProfile(DEFAULT_PROFILE)
 
-        self.color_map_points: List[Point] = [x[0] for x in color_map]
-        self.color_map_colors: Tuple[List[int], List[int], List[int]] = ([x[1][0] for x in color_map],
-                                                                         [x[1][1] for x in color_map],
-                                                                         [x[1][2] for x in color_map])
 
         # output color map as image for debugging
         color_map_image = self.args.get("color_map_image")
@@ -112,7 +155,8 @@ class SpotifyMoodLightsSync(hass.Hass):
             location = color_map_image.get('location')
             if size and location:
                 from PIL import Image
-                im = Image.new('HSV', (size, size))
+                # TODO
+                im = Image.new(self.color_profile.color_mode.name, (size, size))
                 im.putdata(self.create_2d_color_map(size, size))
                 im = im.convert('RGB')
                 try:
@@ -210,7 +254,7 @@ class SpotifyMoodLightsSync(hass.Hass):
 
         valence: float = track_features['valence']
         energy: float = track_features['energy']
-        color = self.color_for_point_rgb((valence, energy))
+        color = self.color_for_point_rgb((valence, energy))  # TODO
 
         self.log(f"Got color {color} for valence {valence} and energy {energy} in track '{track_uri}'", level='DEBUG')
 
@@ -224,27 +268,17 @@ class SpotifyMoodLightsSync(hass.Hass):
         :return: interpolated RGB color for the input point as [r, g, b]
         """
 
-        def mul_array(list_a: List[int], list_b: List[float]) -> List[float]:
-            return [ab[0] * ab[1] for ab in zip(list_a, list_b)]
-
-        def mul_scalar(list_a: Iterable[Num], scalar: float) -> List[Num]:
-            return [x * scalar for x in list_a]
-
-        def inv_dist_weighted_sum(v: List[int], w: List[float]) -> float:
-            return sum(mul_array(v, w)) / sum(weights)
-
-        distances = [math.dist(point, p) for p in self.color_map_points]
-        weights = [1 / (d + 1E-6) for d in distances]
+        weights = inverse_distance_weights(point, self.color_profile.points, self.color_profile.weight)
 
         # compute new RGB value as inverse distance weighted sum:
-        red = inv_dist_weighted_sum(self.color_map_colors[0], weights)
-        green = inv_dist_weighted_sum(self.color_map_colors[1], weights)
-        blue = inv_dist_weighted_sum(self.color_map_colors[2], weights)
+        red = interpolate(self.color_profile.colors[0], weights)
+        green = interpolate(self.color_profile.colors[1], weights)
+        blue = interpolate(self.color_profile.colors[2], weights)
         color = (red, green, blue)
 
         # brighten color spectrum
         sum_color, max_color = sum(color), max(color)
-        required_sum_color = 600.0
+        required_sum_color = 700.0
         if max_color * (required_sum_color / sum_color) <= 255:
             color = mul_scalar(color, required_sum_color / sum_color)
         else:
@@ -260,27 +294,17 @@ class SpotifyMoodLightsSync(hass.Hass):
         :return: interpolated HSV color for the input point as [h, s, v]
         """
 
-        def mul_array(list_a: List[Num], list_b: List[float]) -> List[float]:
-            return [ab[0] * ab[1] for ab in zip(list_a, list_b)]
-
-        def inv_dist_weighted_sum(v: List[Num], w: List[float]) -> float:
-            return sum(mul_array(v, w)) / sum_weights
-
-        distances = [math.dist(point, p) for p in self.color_map_points]
-        p = 1.8
-        weights = [1 / ((d + 1E-6)**p) for d in distances]
-        sum_weights = sum(weights)
-        colors = self.color_map_colors
+        weights = inverse_distance_weights(point, self.color_profile.points, self.color_profile.weight)
 
         # compute value and saturation with IDW:
-        value = min(100., inv_dist_weighted_sum(colors[2], weights))
-        saturation = min(100., inv_dist_weighted_sum(colors[1], weights))
+        value = min(100., interpolate(self.color_profile.colors[2], weights))
+        saturation = min(100., interpolate(self.color_profile.colors[1], weights))
 
         # compute hue angle with IDW in cartesian coordinates:
-        hues_cart_x = [math.sin(math.radians(h)) for h in colors[0]]
-        hues_cart_y = [math.cos(math.radians(h)) for h in colors[0]]
-        hue_x = inv_dist_weighted_sum(hues_cart_x, weights)
-        hue_y = inv_dist_weighted_sum(hues_cart_y, weights)
+        hues_cart_x = [math.sin(math.radians(h)) for h in self.color_profile.colors[0]]
+        hues_cart_y = [math.cos(math.radians(h)) for h in self.color_profile.colors[0]]
+        hue_x = interpolate(hues_cart_x, weights)
+        hue_y = interpolate(hues_cart_y, weights)
         hue = math.degrees(math.atan2(hue_x, hue_y))
         hue = 360 + hue if hue < 0 else hue
 
@@ -288,6 +312,7 @@ class SpotifyMoodLightsSync(hass.Hass):
         assert 0 <= saturation <= 100
         assert 0 <= value <= 100
 
+        # TODO: pillow vs hass
         return int(normalize(hue, 0, 360, 0, 255)), \
             int(normalize(saturation, 0, 100, 0, 255)), \
             int(normalize(value, 0, 100, 0, 255))
@@ -306,7 +331,12 @@ class SpotifyMoodLightsSync(hass.Hass):
             for x in range(0, width):
                 p_y = normalize(y, 0, height - 1, 0, 1)
                 p_x = normalize(x, 0, width - 1, 0, 1)
-                color = self.color_for_point_hsv((p_x, p_y))
+                if self.color_profile.color_mode == ColorMode.RGB:
+                    color = self.color_for_point_rgb((p_x, p_y))
+                elif self.color_profile.color_mode == ColorMode.HSV:
+                    color = self.color_for_point_hsv((p_x, p_y))
+                else:
+                    raise Exception("unknown color mode")
                 image.append(color)
         return image
 
