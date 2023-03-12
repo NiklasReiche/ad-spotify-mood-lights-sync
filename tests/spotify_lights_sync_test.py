@@ -1,7 +1,7 @@
 import contextlib
 import os
 from appdaemontestframework import automation_fixture
-from apps.spotify_mood_lights_sync.spotify_mood_lights_sync import SpotifyMoodLightsSync
+from apps.spotify_mood_lights_sync.spotify_mood_lights_sync import SpotifyMoodLightsSync, rgb_to_hsv, hsv_to_rgb, hsv_to_hs
 from spotipy import Spotify
 from unittest.mock import patch
 from test_utils import *
@@ -54,10 +54,28 @@ class TestCallbacksAreSet:
             listens_to.state('media_player.spotify_test', attribute='media_content_id'). \
             with_callback(uut.sync_lights_from_spotify)
 
-    def test_custom_config(self, given_that, uut, assert_that, update_passed_args):
+    def test_custom_config_legacy(self, given_that, uut, assert_that, update_passed_args):
         with update_passed_args():
             given_that.passed_arg('color_profile').is_set_to('custom')
-            given_that.passed_arg('custom_profile').is_set_to(CUSTOM_PROFILE)
+            given_that.passed_arg('custom_profile').is_set_to(CUSTOM_PROFILE_LEGACY)
+
+        assert_that(uut). \
+            listens_to.state('media_player.spotify_test', attribute='media_content_id'). \
+            with_callback(uut.sync_lights_from_spotify)
+
+    def test_custom_config_rgb(self, given_that, uut, assert_that, update_passed_args):
+        with update_passed_args():
+            given_that.passed_arg('color_profile').is_set_to('custom')
+            given_that.passed_arg('custom_profile').is_set_to(CUSTOM_PROFILE_RGB)
+
+        assert_that(uut). \
+            listens_to.state('media_player.spotify_test', attribute='media_content_id'). \
+            with_callback(uut.sync_lights_from_spotify)
+
+    def test_custom_config_hs(self, given_that, uut, assert_that, update_passed_args):
+        with update_passed_args():
+            given_that.passed_arg('color_profile').is_set_to('custom')
+            given_that.passed_arg('custom_profile').is_set_to(CUSTOM_PROFILE_HS)
 
         assert_that(uut). \
             listens_to.state('media_player.spotify_test', attribute='media_content_id'). \
@@ -66,7 +84,11 @@ class TestCallbacksAreSet:
 
 class TestColorChange:
     @patch.object(Spotify, 'audio_features', new=mock_audio_features)
-    def test_change(self, given_that, media_player, assert_that, uut):
+    def test_color_change_rgb_to_rgb(self, given_that, media_player, assert_that, uut, update_passed_args):
+        with update_passed_args():
+            given_that.passed_arg('light_color_mode').is_set_to('rgb')
+            given_that.passed_arg('color_profile').is_set_to('default')
+
         media_player('media_player.spotify_test').update_state('playing', {'media_content_id': 'min_min'})
         color1 = uut.color_for_point_rgb(track_to_point('min_min'))
         assert_that('light.test_light').was.turned_on(rgb_color=color1)
@@ -76,6 +98,60 @@ class TestColorChange:
         media_player('media_player.spotify_test').update_state('playing', {'media_content_id': 'min_max'})
         color2 = uut.color_for_point_rgb(track_to_point('min_max'))
         assert_that('light.test_light').was.turned_on(rgb_color=color2)
+
+        assert color1 != color2
+
+    @patch.object(Spotify, 'audio_features', new=mock_audio_features)
+    def test_color_change_hs_to_hs(self, given_that, media_player, assert_that, uut, update_passed_args):
+        with update_passed_args():
+            given_that.passed_arg('light_color_mode').is_set_to('hs')
+            given_that.passed_arg('color_profile').is_set_to('hs_default')
+
+        media_player('media_player.spotify_test').update_state('playing', {'media_content_id': 'min_min'})
+        color1 = uut.color_for_point_hsv(track_to_point('min_min'))
+        assert_that('light.test_light').was.turned_on(hs_color=hsv_to_hs(color1))
+
+        given_that.mock_functions_are_cleared()
+
+        media_player('media_player.spotify_test').update_state('playing', {'media_content_id': 'min_max'})
+        color2 = uut.color_for_point_hsv(track_to_point('min_max'))
+        assert_that('light.test_light').was.turned_on(hs_color=hsv_to_hs(color2))
+
+        assert color1 != color2
+
+    @patch.object(Spotify, 'audio_features', new=mock_audio_features)
+    def test_color_change_hs_to_rgb(self, given_that, media_player, assert_that, uut, update_passed_args):
+        with update_passed_args():
+            given_that.passed_arg('light_color_mode').is_set_to('rgb')
+            given_that.passed_arg('color_profile').is_set_to('hs_default')
+
+        media_player('media_player.spotify_test').update_state('playing', {'media_content_id': 'min_min'})
+        color1 = uut.color_for_point_hsv(track_to_point('min_min'))
+        assert_that('light.test_light').was.turned_on(rgb_color=hsv_to_rgb(color1))
+
+        given_that.mock_functions_are_cleared()
+
+        media_player('media_player.spotify_test').update_state('playing', {'media_content_id': 'min_max'})
+        color2 = uut.color_for_point_hsv(track_to_point('min_max'))
+        assert_that('light.test_light').was.turned_on(rgb_color=hsv_to_rgb(color2))
+
+        assert color1 != color2
+
+    @patch.object(Spotify, 'audio_features', new=mock_audio_features)
+    def test_color_change_rgb_to_hs(self, given_that, media_player, assert_that, uut, update_passed_args):
+        with update_passed_args():
+            given_that.passed_arg('light_color_mode').is_set_to('hs')
+            given_that.passed_arg('color_profile').is_set_to('default')
+
+        media_player('media_player.spotify_test').update_state('playing', {'media_content_id': 'min_min'})
+        color1 = uut.color_for_point_rgb(track_to_point('min_min'))
+        assert_that('light.test_light').was.turned_on(hs_color=hsv_to_hs(rgb_to_hsv(color1)))
+
+        given_that.mock_functions_are_cleared()
+
+        media_player('media_player.spotify_test').update_state('playing', {'media_content_id': 'min_max'})
+        color2 = uut.color_for_point_rgb(track_to_point('min_max'))
+        assert_that('light.test_light').was.turned_on(hs_color=hsv_to_hs(rgb_to_hsv(color2)))
 
         assert color1 != color2
 
@@ -101,10 +177,10 @@ class TestColorChange:
         # assert_that('light.test_light').was.turned_on(rgb_color=(255, 255, 255))
 
     @patch.object(Spotify, 'audio_features', new=mock_audio_features)
-    def test_custom_color_profile(self, given_that, media_player, assert_that, update_passed_args):
+    def test_custom_color_profile_legacy(self, given_that, media_player, assert_that, update_passed_args):
         with update_passed_args():
             given_that.passed_arg('color_profile').is_set_to('custom')
-            given_that.passed_arg('custom_profile').is_set_to(CUSTOM_PROFILE)
+            given_that.passed_arg('custom_profile').is_set_to(CUSTOM_PROFILE_LEGACY)
 
         media_player('media_player.spotify_test').update_state('playing', {'media_content_id': 'min_min'})
         assert_that('light.test_light').was.turned_on(rgb_color=(0, 0, 255))

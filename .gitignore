@@ -4,4 +4,4 @@ venv
 __pycache__
 
 tests/secrets.py
-tests/out.png
+tests/out*.png
