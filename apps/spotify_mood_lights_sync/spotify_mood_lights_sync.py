@@ -12,7 +12,9 @@ from requests.exceptions import ConnectionError
 
 from typing import Tuple, List, TypeVar, Callable, Iterable
 
-Color = Tuple[int, int, int]
+RGB_Color = Tuple[int, int, int]
+HSV_Color = Tuple[int, int, int]
+HS_Color = Tuple[int, int]
 Point = Tuple[float, float]
 T = TypeVar('T')
 Num = TypeVar('Num', int, float)
@@ -27,14 +29,13 @@ DEFAULT_PROFILE = [
     ((0.0, 0.0), (0, 0, 255), 1.0),  # sad - blue
 ]
 CENTERED_PROFILE = [
-    ((0.05, 0.5), (128, 0, 128), 1.0),  # disgust - purple
-    ((0.25, 0.75), (255, 0, 0), 1.0),  # angry - red
-    ((0.5, 0.8), (255, 165, 0), 1.0),  # alert - orange
-    ((0.75, 0.75), (255, 255, 0), 1.0),  # happy - yellow
-    ((0.7, 0.3), (0, 205, 0), 1.0),  # calm - green
-    ((0.5, 0.2), (0, 165, 255), 1.0),  # relaxed - bluegreen
-    ((0.25, 0.25), (0, 0, 255), 1.0),  # sad - blue
-    ((0.5, 0.5), (255, 241, 224), 1.0),  # neutral - neutral
+    ((0.05, 0.5), (128, 0, 128), 2.0),  # disgust - purple
+    ((0.25, 0.75), (255, 0, 0), 2.0),  # angry - red
+    ((0.5, 0.8), (255, 165, 0), 2.0),  # alert - orange
+    ((0.75, 0.75), (255, 255, 0), 2.0),  # happy - yellow
+    ((0.7, 0.3), (0, 205, 0), 2.0),  # calm - green
+    ((0.5, 0.2), (0, 165, 255), 2.0),  # relaxed - bluegreen
+    ((0.25, 0.25), (0, 0, 255), 2.0),  # sad - blue
 ]
 HS_DEFAULT_PROFILE = [
     ((0.0, 0.5), (300, 100), 1.0),  # disgust - purple
@@ -45,7 +46,6 @@ HS_DEFAULT_PROFILE = [
     ((1.0, 0.0), (120, 100), 1.0),  # calm - green
     ((0.5, 0.0), (200, 100), 1.0),  # relaxed - bluegreen
     ((0.1, 0.1), (240, 100), 1.0),  # sad - blue
-    ((0.5, 0.5), (180, 0), 0.2)
 ]
 
 
@@ -60,14 +60,15 @@ class ColorProfile:
         self.global_weight = weight
         self.points: List[Point] = [x[0] for x in data]
         self.local_weights: List[float] = [x[2] for x in data]
-        # TODO
         if color_mode == ColorMode.RGB:
-            self.colors: Tuple[List[int], List[int], List[int]] = ([x[1][0] for x in data],
-                                                                   [x[1][1] for x in data],
-                                                                   [x[1][2] for x in data])
+            self.channels: Tuple[List[int], List[int], List[int]] | Tuple[List[int], List[int]] = \
+                ([x[1][0] for x in data],
+                 [x[1][1] for x in data],
+                 [x[1][2] for x in data])
         if color_mode == ColorMode.HS:
-            self.colors: Tuple[List[int], List[int], List[int]] = ([x[1][0] for x in data],
-                                                                   [x[1][1] for x in data])
+            self.channels: Tuple[List[int], List[int], List[int]] | Tuple[List[int], List[int]] = \
+                ([x[1][0] for x in data],
+                 [x[1][1] for x in data])
 
 
 class RGBColorProfile(ColorProfile):
@@ -102,7 +103,7 @@ def interpolate(values: List[Num], weights: List[float]):
     return sum(mul_array(values, weights)) / sum(weights)
 
 
-def rgb_to_hsv(color: Color) -> Color:
+def rgb_to_hsv(color: RGB_Color) -> RGB_Color:
     color = colorsys.rgb_to_hsv(
         normalize(color[0], 0, 255, 0, 1),
         normalize(color[1], 0, 255, 0, 1),
@@ -113,7 +114,7 @@ def rgb_to_hsv(color: Color) -> Color:
         int(normalize(color[2], 0, 1, 0, 100))
 
 
-def hsv_to_rgb(color: Color) -> Color:
+def hsv_to_rgb(color: RGB_Color) -> RGB_Color:
     color = colorsys.hsv_to_rgb(
         normalize(color[0], 0, 360, 0, 1),
         normalize(color[1], 0, 100, 0, 1),
@@ -122,6 +123,10 @@ def hsv_to_rgb(color: Color) -> Color:
     return int(normalize(color[0], 0, 1, 0, 255)), \
         int(normalize(color[1], 0, 1, 0, 255)), \
         int(normalize(color[2], 0, 1, 0, 255))
+
+
+def hsv_to_hs(color: HSV_Color) -> HS_Color:
+    return color[0], color[1]
 
 
 class SpotifyMoodLightsSync(hass.Hass):
@@ -166,7 +171,7 @@ class SpotifyMoodLightsSync(hass.Hass):
             self.color_profile = RGBColorProfile(DEFAULT_PROFILE)
         elif color_profile_arg == 'centered':
             self.color_profile = RGBColorProfile(CENTERED_PROFILE)
-        elif color_profile_arg == 'hsv_default':
+        elif color_profile_arg == 'hs_default':
             self.color_profile = HSColorProfile(HS_DEFAULT_PROFILE)
         elif color_profile_arg == 'custom':
             custom_profile = self.args.get('custom_profile')
@@ -175,6 +180,7 @@ class SpotifyMoodLightsSync(hass.Hass):
                 try:
                     data = [(x['point'], x['color'], x.get('weight', 1.0)) for x in custom_profile]
 
+                    assert len(data) > 0
                     assert all([len(p) == 2 and len(c) == 3 for p, c, w in data])
                     assert all([0 <= p[0] <= 1 and 0 <= p[1] <= 1 for p, c, w in data])
                     assert all([0 <= c[0] <= 255 and 0 <= c[1] <= 255 and 0 <= c[2] <= 255 for p, c, w in data])
@@ -183,14 +189,14 @@ class SpotifyMoodLightsSync(hass.Hass):
                     self.error("Profile set to 'custom' but 'custom_profile' is malformed. Falling back to the default "
                                "profile", level='WARNING')
                     self.color_profile = RGBColorProfile(DEFAULT_PROFILE)
-
             elif custom_profile:
                 try:
                     mode = custom_profile['color_mode']
-                    weight = custom_profile['global_weight']
+                    weight = custom_profile.get('global_weight', 1.5)
                     data = [(x['point'], x['color'], x.get('local_weight', 1.0))
                             for x in custom_profile['sample_data']]
 
+                    assert len(data) > 0
                     assert all([isinstance(w, numbers.Number) for p, c, w in data])
                     assert all([0 <= p[0] <= 1 and 0 <= p[1] <= 1 for p, c, w in data])
 
@@ -208,19 +214,20 @@ class SpotifyMoodLightsSync(hass.Hass):
 
                     else:
                         self.error(
-                            f"Unknown color mode {mode} in 'custom_profile'. Must be 'rgb' or 'hs'. Falling back to the"
-                            f" default profile", level='WARNING')
+                            f"Unknown color mode '{mode}' in 'custom_profile'. Must be 'rgb' or 'hs'. Falling back to "
+                            f"the default profile", level='WARNING')
                         self.color_profile = RGBColorProfile(DEFAULT_PROFILE)
-
                 except (KeyError, AssertionError):
                     self.error("Profile set to 'custom' but 'custom_profile' is malformed. Falling back to the default "
                                "profile", level='WARNING')
                     self.color_profile = RGBColorProfile(DEFAULT_PROFILE)
-
             else:
                 self.error("Profile set to 'custom' but no 'custom_profile' specified in app config. Falling back to "
                            "the default profile", level='WARNING')
                 self.color_profile = RGBColorProfile(DEFAULT_PROFILE)
+        else:
+            self.error(f"Unknown profile '{color_profile_arg}'. Falling back to the default profile", level='WARNING')
+            self.color_profile = RGBColorProfile(DEFAULT_PROFILE)
 
         # output color map as image for debugging
         color_map_image = self.args.get("color_map_image")
@@ -234,7 +241,7 @@ class SpotifyMoodLightsSync(hass.Hass):
                 try:
                     im.save(location)
                 except OSError as e:
-                    self.error(f"could not write image to path {location}. Reason: {e.strerror}", level='WARNING')
+                    self.error(f"Could not write image to path '{location}'. Reason: {e.strerror}", level='WARNING')
             else:
                 self.error("'color_map_image' specified, but 'size' or 'location' not specified in app config. "
                            "Skipping image generation", level='WARNING')
@@ -322,12 +329,12 @@ class SpotifyMoodLightsSync(hass.Hass):
         elif self.light_color_mode == 'hs':
             if self.color_profile.color_mode == ColorMode.RGB:
                 color = rgb_to_hsv(color)
-            self.turn_on(self.light, **{'hs_color': (color[0], color[1])})
+            self.turn_on(self.light, **{'hs_color': hsv_to_hs(color)})
         else:
             self.error(f"Unknown color mode '{self.light_color_mode}' for turn_on service on light entity",
                        level='ERROR')
 
-    def color_from_uri(self, track_uri: str) -> Color:
+    def color_from_uri(self, track_uri: str) -> RGB_Color | HSV_Color:
         """Get the color from a spotify track uri."""
 
         track_features = self.call_api(partial(self.sp.audio_features, track_uri))[0]
@@ -347,7 +354,7 @@ class SpotifyMoodLightsSync(hass.Hass):
 
         return color
 
-    def color_for_point_rgb(self, point: Point) -> Color:
+    def color_for_point_rgb(self, point: Point) -> RGB_Color:
         """Computes an RGB color value for a point on the color plane.
 
         :param point: coordinates in the range [0,1]X[0,1]
@@ -359,9 +366,9 @@ class SpotifyMoodLightsSync(hass.Hass):
                                            global_weight=self.color_profile.global_weight)
 
         # compute new RGB value as inverse distance weighted sum:
-        red = interpolate(self.color_profile.colors[0], weights)
-        green = interpolate(self.color_profile.colors[1], weights)
-        blue = interpolate(self.color_profile.colors[2], weights)
+        red = interpolate(self.color_profile.channels[0], weights)
+        green = interpolate(self.color_profile.channels[1], weights)
+        blue = interpolate(self.color_profile.channels[2], weights)
         color = (red, green, blue)
 
         # brighten color spectrum
@@ -374,7 +381,7 @@ class SpotifyMoodLightsSync(hass.Hass):
 
         return int(color[0]), int(color[1]), int(color[2])
 
-    def color_for_point_hsv(self, point: Point) -> Color:
+    def color_for_point_hsv(self, point: Point) -> HSV_Color:
         """Computes an HSV color value for a point on the color plane.
 
         :param point: coordinates in the range [0,1]X[0,1]
@@ -386,11 +393,11 @@ class SpotifyMoodLightsSync(hass.Hass):
                                            global_weight=self.color_profile.global_weight)
 
         # compute saturation with IDW:
-        saturation = min(100., interpolate(self.color_profile.colors[1], weights))
+        saturation = min(100., interpolate(self.color_profile.channels[1], weights))
 
         # compute hue angle with IDW in cartesian coordinates:
-        hues_cart_x = [math.sin(math.radians(h)) for h in self.color_profile.colors[0]]
-        hues_cart_y = [math.cos(math.radians(h)) for h in self.color_profile.colors[0]]
+        hues_cart_x = [math.sin(math.radians(h)) for h in self.color_profile.channels[0]]
+        hues_cart_y = [math.cos(math.radians(h)) for h in self.color_profile.channels[0]]
         hue_x = interpolate(hues_cart_x, weights)
         hue_y = interpolate(hues_cart_y, weights)
         hue = math.degrees(math.atan2(hue_x, hue_y))
@@ -401,7 +408,7 @@ class SpotifyMoodLightsSync(hass.Hass):
 
         return int(hue), int(saturation), 100
 
-    def create_color_map_image(self, height: int, width: int) -> List[Color]:
+    def create_color_map_image(self, height: int, width: int) -> List[RGB_Color]:
         """Creates an image of the color map in use.
 
         :param height: height of the output image in pixels
