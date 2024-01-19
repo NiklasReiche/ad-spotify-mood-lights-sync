@@ -28,15 +28,6 @@ DEFAULT_PROFILE = [
     ((0.5, 0.0), (0, 165, 255), 1.0),  # relaxed - bluegreen
     ((0.0, 0.0), (0, 0, 255), 1.0),  # sad - blue
 ]
-CENTERED_PROFILE = [
-    ((0.05, 0.5), (128, 0, 128), 2.0),  # disgust - purple
-    ((0.25, 0.75), (255, 0, 0), 2.0),  # angry - red
-    ((0.5, 0.8), (255, 165, 0), 2.0),  # alert - orange
-    ((0.75, 0.75), (255, 255, 0), 2.0),  # happy - yellow
-    ((0.7, 0.3), (0, 205, 0), 2.0),  # calm - green
-    ((0.5, 0.2), (0, 165, 255), 2.0),  # relaxed - bluegreen
-    ((0.25, 0.25), (0, 0, 255), 2.0),  # sad - blue
-]
 HS_DEFAULT_PROFILE = [
     ((0.0, 0.5), (300, 100), 1.0),  # disgust - purple
     ((0.0, 1.0), (0, 100), 1.0),  # angry - red
@@ -174,8 +165,6 @@ class SpotifyMoodLightsSync(hass.Hass):
         color_profile_arg = self.args.get('color_profile', 'default')
         if color_profile_arg == 'default':
             self.color_profile = RGBColorProfile(DEFAULT_PROFILE)
-        elif color_profile_arg == 'centered':
-            self.color_profile = RGBColorProfile(CENTERED_PROFILE)
         elif color_profile_arg == 'hs_default':
             self.color_profile = HSColorProfile(HS_DEFAULT_PROFILE)
         elif color_profile_arg == 'custom':
@@ -183,7 +172,7 @@ class SpotifyMoodLightsSync(hass.Hass):
             if type(custom_profile) is list:  # legacy config, assume RGB values without weights
                 self.error("Using deprecated custom_profile config format. See README for new format.", level='WARNING')
                 try:
-                    data = [(x['point'], x['color'], x.get('weight', 1.0)) for x in custom_profile]
+                    data = [(x['point'], x['color'], 1.0) for x in custom_profile]
 
                     assert len(data) > 0
                     assert all([len(p) == 2 and len(c) == 3 for p, c, w in data])
@@ -267,15 +256,6 @@ class SpotifyMoodLightsSync(hass.Hass):
     def sync_lights_from_spotify(self, entity: str, attribute: str, old_uri: str, new_uri: str, kwargs) -> None:
         if new_uri is None or old_uri == new_uri:
             return
-
-        # if new_uri is None:
-        #    if self.initial_light_state is not None:
-        #        self.restore_initial_light_state()
-        #        self.initial_light_state = None
-        #    return
-
-        # if self.initial_light_state is None:
-        #    self.save_initial_light_state()
 
         self.sync_light(new_uri)
 
@@ -422,16 +402,6 @@ class SpotifyMoodLightsSync(hass.Hass):
                     raise Exception("unknown color mode")
                 image.append(color)
         return image
-
-    def save_initial_light_state(self):
-        self.initial_light_state = dict(self.get_state(self.light, attribute='all'))
-
-    def restore_initial_light_state(self):
-        if self.initial_light_state['state'] == 'on':
-            color = self.initial_light_state['attributes'].get('color', None)
-            self.turn_on(self.light, **({} if color is None else {'rgb_color': color}))  # TODO
-        elif self.initial_light_state['state'] == 'off':
-            self.turn_off(self.light)
 
     def call_api(self, func: Callable[[], T]) -> T:
         retries = self.max_retries
