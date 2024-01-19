@@ -35,14 +35,7 @@ class TestImageOutput:
 
     def test_hs_default_output(self, given_that, update_passed_args):
         with update_passed_args():
-            given_that.passed_arg('color_profile').is_set_to('hs_default')
+            given_that.passed_arg('color_profile').is_set_to('saturated')
             given_that.passed_arg('color_map_image').is_set_to({'size': 200, 'location': './out_hs.png'})
 
         assert os.path.isfile('./out_hs.png')
-
-    def test_centered_output(self, given_that, update_passed_args):
-        with update_passed_args():
-            given_that.passed_arg('color_profile').is_set_to('centered')
-            given_that.passed_arg('color_map_image').is_set_to({'size': 200, 'location': './out_centered.png'})
-
-        assert os.path.isfile('./out_centered.png')

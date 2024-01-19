@@ -20,22 +20,22 @@ T = TypeVar('T')
 Num = TypeVar('Num', int, float)
 
 DEFAULT_PROFILE = [
-    ((0.0, 0.5), (128, 0, 128), 1.0),  # disgust - purple
-    ((0.0, 1.0), (255, 0, 0), 1.0),  # angry - red
-    ((0.5, 1.0), (255, 165, 0), 1.0),  # alert - orange
-    ((1.0, 1.0), (255, 255, 0), 1.0),  # happy - yellow
-    ((1.0, 0.0), (0, 205, 0), 1.0),  # calm - green
-    ((0.5, 0.0), (0, 165, 255), 1.0),  # relaxed - bluegreen
-    ((0.0, 0.0), (0, 0, 255), 1.0),  # sad - blue
+    ((0.0, 0.5), (128, 0, 128), 1.0),   # disgust - purple
+    ((0.0, 1.0), (255, 0, 0), 1.0),     # angry - red
+    ((0.5, 1.0), (255, 165, 0), 1.0),   # alert - orange
+    ((1.0, 1.0), (255, 255, 0), 1.0),   # happy - yellow
+    ((1.0, 0.0), (0, 205, 0), 1.0),     # calm - green
+    ((0.5, 0.0), (0, 180, 255), 1.0),   # relaxed - bluegreen
+    ((0.0, 0.0), (0, 0, 255), 1.0),     # sad - blue
 ]
 SATURATED_PROFILE = [
     ((0.0, 0.5), (300, 100), 1.0),  # disgust - purple
-    ((0.0, 1.0), (0, 100), 1.0),  # angry - red
-    ((0.5, 1.0), (40, 100), 1.0),  # alert - orange
-    ((1.0, 1.0), (60, 100), 1.0),  # happy - yellow
-    ((1.0, 0.5), (90, 100), 1.0),
+    ((0.0, 1.0), (0, 100), 1.0),    # angry - red
+    ((0.5, 1.0), (40, 100), 1.0),   # alert - orange
+    ((1.0, 1.0), (60, 100), 1.0),   # happy - yellow
+    ((1.0, 0.5), (90, 100), 1.0),   # - yellowgreen
     ((1.0, 0.0), (120, 100), 1.0),  # calm - green
-    ((0.5, 0.0), (200, 100), 1.0),  # relaxed - bluegreen
+    ((0.5, 0.0), (198, 100), 1.0),  # relaxed - bluegreen
     ((0.0, 0.0), (240, 100), 1.0),  # sad - blue
 ]
 
@@ -68,7 +68,7 @@ class RGBColorProfile(ColorProfile):
 
 
 class HSColorProfile(ColorProfile):
-    def __init__(self, data, weight=1.5):
+    def __init__(self, data, weight=1.8):
         super().__init__(ColorMode.HS, data, weight)
 
 
@@ -129,7 +129,7 @@ def hsv_to_hs(color: HSV_Color) -> HS_Color:
 
 
 def to_max_brightness(color: RGB_Color):
-    return hs_to_rgb(rgb_to_hs(color))  # TODO: unnecessary normalizations
+    return hs_to_rgb(rgb_to_hs(color))
 
 
 class SpotifyMoodLightsSync(hass.Hass):
@@ -165,7 +165,7 @@ class SpotifyMoodLightsSync(hass.Hass):
         color_profile_arg = self.args.get('color_profile', 'default')
         if color_profile_arg == 'default':
             self.color_profile = RGBColorProfile(DEFAULT_PROFILE)
-        elif color_profile_arg == 'hs_default':
+        elif color_profile_arg == 'saturated':
             self.color_profile = HSColorProfile(SATURATED_PROFILE)
         elif color_profile_arg == 'custom':
             custom_profile = self.args.get('custom_profile')
