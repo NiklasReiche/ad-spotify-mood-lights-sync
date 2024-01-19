@@ -28,7 +28,7 @@ DEFAULT_PROFILE = [
     ((0.5, 0.0), (0, 165, 255), 1.0),  # relaxed - bluegreen
     ((0.0, 0.0), (0, 0, 255), 1.0),  # sad - blue
 ]
-HS_DEFAULT_PROFILE = [
+SATURATED_PROFILE = [
     ((0.0, 0.5), (300, 100), 1.0),  # disgust - purple
     ((0.0, 1.0), (0, 100), 1.0),  # angry - red
     ((0.5, 1.0), (40, 100), 1.0),  # alert - orange
@@ -166,7 +166,7 @@ class SpotifyMoodLightsSync(hass.Hass):
         if color_profile_arg == 'default':
             self.color_profile = RGBColorProfile(DEFAULT_PROFILE)
         elif color_profile_arg == 'hs_default':
-            self.color_profile = HSColorProfile(HS_DEFAULT_PROFILE)
+            self.color_profile = HSColorProfile(SATURATED_PROFILE)
         elif color_profile_arg == 'custom':
             custom_profile = self.args.get('custom_profile')
             if type(custom_profile) is list:  # legacy config, assume RGB values without weights
