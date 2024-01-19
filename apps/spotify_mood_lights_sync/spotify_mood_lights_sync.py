@@ -27,16 +27,6 @@ DEFAULT_PROFILE = [
     ((0.5, 0.0), (0, 180, 255), 1.0),   # relaxed - bluegreen
     ((0.0, 0.0), (0, 0, 255), 1.0),     # sad - blue
 ]
-SATURATED_PROFILE = [
-    ((0.0, 0.5), (300, 100), 1.0),  # disgust - purple
-    ((0.0, 1.0), (0, 100), 1.0),    # angry - red
-    ((0.5, 1.0), (40, 100), 1.0),   # alert - orange
-    ((1.0, 1.0), (60, 100), 1.0),   # happy - yellow
-    ((1.0, 0.5), (90, 100), 1.0),   # - yellowgreen
-    ((1.0, 0.0), (120, 100), 1.0),  # calm - green
-    ((0.5, 0.0), (198, 100), 1.0),  # relaxed - bluegreen
-    ((0.0, 0.0), (240, 100), 1.0),  # sad - blue
-]
 
 
 class ColorMode(Enum):
@@ -45,30 +35,61 @@ class ColorMode(Enum):
 
 
 class ColorProfile:
-    def __init__(self, color_mode, data, weight=1.0):
-        self.color_mode = color_mode
-        self.global_weight = weight
-        self.points: List[Point] = [x[0] for x in data]
-        self.local_weights: List[float] = [x[2] for x in data]
-        if color_mode == ColorMode.RGB:
-            self.channels: Tuple[List[int], List[int], List[int]] | Tuple[List[int], List[int]] = \
-                ([x[1][0] for x in data],
-                 [x[1][1] for x in data],
-                 [x[1][2] for x in data])
-        if color_mode == ColorMode.HS:
-            self.channels: Tuple[List[int], List[int], List[int]] | Tuple[List[int], List[int]] = \
-                ([x[1][0] for x in data],
-                 [x[1][1] for x in data])
+    def color_for_point(self, point: Point) -> RGB_Color:
+        """Computes an RGB color value for a point on the color plane.
+
+        :param point: coordinates in the range [0,1]X[0,1]
+
+        :return: interpolated RGB color for the input point as [r, g, b] where 0 <= r,g,b <= 255
+        """
+        pass
 
 
 class RGBColorProfile(ColorProfile):
-    def __init__(self, data, weight=2.0):
-        super().__init__(ColorMode.RGB, data, weight)
+    def __init__(self, data, global_weight=2.0):
+        self.global_weight = global_weight
+        self.points: List[Point] = [x[0] for x in data]
+        self.local_weights: List[float] = [x[2] for x in data]
+        self.channels: Tuple[List[int], List[int], List[int]] | Tuple[List[int], List[int]] = \
+            ([x[1][0] for x in data],
+             [x[1][1] for x in data],
+             [x[1][2] for x in data])
+
+    def color_for_point(self, point: Point) -> RGB_Color:
+        weights = inverse_distance_weights(point, self.points, self.local_weights,
+                                           global_weight=self.global_weight)
+
+        # compute new RGB value as inverse distance weighted sum:
+        red = interpolate(self.channels[0], weights)
+        green = interpolate(self.channels[1], weights)
+        blue = interpolate(self.channels[2], weights)
+
+        # brightness should be max to not conflict with the light's brightness setting (equivalent to HS space)
+        return to_max_brightness((int(red), int(green), int(blue)))
 
 
 class HSColorProfile(ColorProfile):
-    def __init__(self, data, weight=1.8):
-        super().__init__(ColorMode.HS, data, weight)
+    def __init__(self, mirror_x, mirror_y, rotate):
+        self.mirror_x = mirror_x
+        self.mirror_y = mirror_y
+        self.rotate = rotate
+        pass
+
+    def color_for_point(self, point: Point) -> RGB_Color:
+        point = (normalize(point[0], 0.0, 1.0, -1.0, 1.0),
+                 normalize(point[1], 0.0, 1.0, -1.0, 1.0))
+        # calculate hue from angle to center
+        x = point[0] * (-1.0 if self.mirror_x else 1.0)
+        y = point[1] * (-1.0 if self.mirror_y else 1.0)
+        angle = math.degrees(math.atan2(y, x)) + self.rotate
+        # map to 0-360 degree range
+        hue = (angle + 360) % 360
+
+        # calculate saturation as distance to center, clamped to unit circle
+        distance = min(math.dist([0.0, 0.0], point), 1.0)  # TODO: drop-off
+        saturation = normalize(distance, 0, 1, 0, 100)
+
+        return hs_to_rgb((int(hue), int(100)))
 
 
 def normalize(v, in_min, in_max, out_min, out_max):
@@ -150,7 +171,7 @@ class SpotifyMoodLightsSync(hass.Hass):
         if color_profile_arg == 'default' or color_profile_arg == 'centered':
             self.color_profile = RGBColorProfile(DEFAULT_PROFILE)
         elif color_profile_arg == 'saturated':
-            self.color_profile = HSColorProfile(SATURATED_PROFILE)
+            self.color_profile = HSColorProfile(True, False, -60)
         elif color_profile_arg == 'custom':
             custom_profile = self.args.get('custom_profile')
             if type(custom_profile) is list:  # legacy config, assume RGB values without weights
@@ -293,14 +314,10 @@ class SpotifyMoodLightsSync(hass.Hass):
         if self.light is None:
             return
 
-        # use RGB for the HA service call
-        if self.color_profile.color_mode == ColorMode.HS:
-            color = hs_to_rgb(color)
-
         # the color mode used here should not matter, since HA already converts it to a mode supported by the light
         self.turn_on(self.light, **{'rgb_color': color})
 
-    def color_from_uri(self, track_uri: str) -> RGB_Color | HS_Color:
+    def color_from_uri(self, track_uri: str) -> RGB_Color:
         """Get the color from a spotify track uri."""
 
         track_features = self.call_api(partial(self.sp.audio_features, track_uri))[0]
@@ -309,62 +326,11 @@ class SpotifyMoodLightsSync(hass.Hass):
 
         valence: float = track_features['valence']
         energy: float = track_features['energy']
-        if self.color_profile.color_mode == ColorMode.RGB:
-            color = self.color_for_point_rgb((valence, energy))
-        elif self.color_profile.color_mode == ColorMode.HS:
-            color = self.color_for_point_hs((valence, energy))
-        else:
-            raise ValueError("unknown color mode")
+        color = self.color_profile.color_for_point((valence, energy))
 
         self.log(f"Got color {color} for valence {valence} and energy {energy} in track '{track_uri}'", level='DEBUG')
 
         return color
-
-    def color_for_point_rgb(self, point: Point) -> RGB_Color:
-        """Computes an RGB color value for a point on the color plane.
-
-        :param point: coordinates in the range [0,1]X[0,1]
-
-        :return: interpolated RGB color for the input point as [r, g, b] where 0 <= r,g,b <= 255
-        """
-
-        weights = inverse_distance_weights(point, self.color_profile.points, self.color_profile.local_weights,
-                                           global_weight=self.color_profile.global_weight)
-
-        # compute new RGB value as inverse distance weighted sum:
-        red = interpolate(self.color_profile.channels[0], weights)
-        green = interpolate(self.color_profile.channels[1], weights)
-        blue = interpolate(self.color_profile.channels[2], weights)
-
-        # brightness should be max to not conflict with the light's brightness setting (equivalent to HS space)
-        return to_max_brightness((int(red), int(green), int(blue)))
-
-    def color_for_point_hs(self, point: Point) -> HS_Color:
-        """Computes an HS color value for a point on the color plane.
-
-        :param point: coordinates in the range [0,1]X[0,1]
-
-        :return: interpolated HS color for the input point as [h, s], where 0 <= h <= 360 and 0 <= s <= 100
-        """
-
-        weights = inverse_distance_weights(point, self.color_profile.points, self.color_profile.local_weights,
-                                           global_weight=self.color_profile.global_weight)
-
-        # compute saturation with IDW:
-        saturation = min(100., interpolate(self.color_profile.channels[1], weights))
-
-        # compute hue angle with IDW in cartesian coordinates:
-        hues_cart_x = [math.sin(math.radians(h)) for h in self.color_profile.channels[0]]
-        hues_cart_y = [math.cos(math.radians(h)) for h in self.color_profile.channels[0]]
-        hue_x = interpolate(hues_cart_x, weights)
-        hue_y = interpolate(hues_cart_y, weights)
-        hue = math.degrees(math.atan2(hue_x, hue_y))
-        hue = 360 + hue if hue < 0 else hue
-
-        assert 0 <= hue <= 360
-        assert 0 <= saturation <= 100
-
-        return int(hue), int(saturation)
 
     def create_color_map_image(self, height: int, width: int) -> List[RGB_Color]:
         """Creates an image of the color map in use.
@@ -380,12 +346,7 @@ class SpotifyMoodLightsSync(hass.Hass):
             for x in range(0, width):
                 p_y = normalize(y, 0, height - 1, 0, 1)
                 p_x = normalize(x, 0, width - 1, 0, 1)
-                if self.color_profile.color_mode == ColorMode.RGB:
-                    color = self.color_for_point_rgb((p_x, p_y))
-                elif self.color_profile.color_mode == ColorMode.HS:
-                    color = hs_to_rgb(self.color_for_point_hs((p_x, p_y)))
-                else:
-                    raise Exception("unknown color mode")
+                color = self.color_profile.color_for_point((p_x, p_y))
                 image.append(color)
         return image
 
