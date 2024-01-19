@@ -149,7 +149,7 @@ class SpotifyMoodLightsSync(hass.Hass):
 
         # setup color profile
         color_profile_arg = self.args.get('color_profile', 'default')
-        if color_profile_arg == 'default':
+        if color_profile_arg == 'default' or color_profile_arg == 'centered':
             self.color_profile = RGBColorProfile(DEFAULT_PROFILE)
         elif color_profile_arg == 'saturated':
             self.color_profile = HSColorProfile(SATURATED_PROFILE)

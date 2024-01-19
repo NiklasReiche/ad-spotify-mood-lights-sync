@@ -40,8 +40,8 @@ CUSTOM_PROFILE_HS = {
     'global_weight': 2,
     'sample_data': [
         {'point': [1, 1], 'color': [30, 100]},
-        {'point': [1, 1], 'color': [180, 100], 'local_weight': 0.8},
-        {'point': [1, 0], 'color': [380, 100], 'local_weight': 2},
+        {'point': [0, 1], 'color': [180, 100], 'local_weight': 0.8},
+        {'point': [1, 0], 'color': [300, 100], 'local_weight': 2},
         {'point': [0, 0], 'color': [0, 100]},
     ]
 }

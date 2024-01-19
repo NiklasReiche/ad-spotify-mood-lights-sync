@@ -1,7 +1,7 @@
 import contextlib
 import os
 from appdaemontestframework import automation_fixture
-from apps.spotify_mood_lights_sync.spotify_mood_lights_sync import SpotifyMoodLightsSync
+from apps.spotify_mood_lights_sync.spotify_mood_lights_sync import SpotifyMoodLightsSync, hs_to_rgb
 from spotipy import Spotify
 from unittest.mock import patch
 from test_utils import *
@@ -84,9 +84,8 @@ class TestCallbacksAreSet:
 
 class TestColorChange:
     @patch.object(Spotify, 'audio_features', new=mock_audio_features)
-    def test_color_change(self, given_that, media_player, assert_that, uut, update_passed_args):
+    def test_color_change_default(self, given_that, media_player, assert_that, uut, update_passed_args):
         with update_passed_args():
-            given_that.passed_arg('light_color_mode').is_set_to('rgb')
             given_that.passed_arg('color_profile').is_set_to('default')
 
         media_player('media_player.spotify_test').update_state('playing', {'media_content_id': 'min_min'})
@@ -97,6 +96,23 @@ class TestColorChange:
 
         media_player('media_player.spotify_test').update_state('playing', {'media_content_id': 'min_max'})
         color2 = uut.color_for_point_rgb(track_to_point('min_max'))
+        assert_that('light.test_light').was.turned_on(rgb_color=color2)
+
+        assert color1 != color2
+
+    @patch.object(Spotify, 'audio_features', new=mock_audio_features)
+    def test_color_change_saturated(self, given_that, media_player, assert_that, uut, update_passed_args):
+        with update_passed_args():
+            given_that.passed_arg('color_profile').is_set_to('saturated')
+
+        media_player('media_player.spotify_test').update_state('playing', {'media_content_id': 'min_min'})
+        color1 = hs_to_rgb(uut.color_for_point_hs(track_to_point('min_min')))
+        assert_that('light.test_light').was.turned_on(rgb_color=color1)
+
+        given_that.mock_functions_are_cleared()
+
+        media_player('media_player.spotify_test').update_state('playing', {'media_content_id': 'min_max'})
+        color2 = hs_to_rgb(uut.color_for_point_hs(track_to_point('min_max')))
         assert_that('light.test_light').was.turned_on(rgb_color=color2)
 
         assert color1 != color2
@@ -136,8 +152,39 @@ class TestColorChange:
         media_player('media_player.spotify_test').update_state('playing', {'media_content_id': 'min_max'})
         assert_that('light.test_light').was.turned_on(rgb_color=(0, 255, 0))
 
+    @patch.object(Spotify, 'audio_features', new=mock_audio_features)
+    def test_custom_color_profile_rgb(self, given_that, media_player, assert_that, update_passed_args):
+        with update_passed_args():
+            given_that.passed_arg('color_profile').is_set_to('custom')
+            given_that.passed_arg('custom_profile').is_set_to(CUSTOM_PROFILE_RGB)
 
-# TODO: find a way to check that the callback was _not_ registered
+        media_player('media_player.spotify_test').update_state('playing', {'media_content_id': 'min_min'})
+        assert_that('light.test_light').was.turned_on(rgb_color=(255, 255, 0))
+
+        given_that.mock_functions_are_cleared()
+
+        media_player('media_player.spotify_test').update_state('playing', {'media_content_id': 'min_max'})
+        assert_that('light.test_light').was.turned_on(rgb_color=(0, 255, 0))
+
+    @patch.object(Spotify, 'audio_features', new=mock_audio_features)
+    def test_custom_color_profile_hs(self, given_that, media_player, uut, assert_that, update_passed_args):
+        with update_passed_args():
+            given_that.passed_arg('color_profile').is_set_to('custom')
+            given_that.passed_arg('custom_profile').is_set_to(CUSTOM_PROFILE_HS)
+
+        media_player('media_player.spotify_test').update_state('playing', {'media_content_id': 'min_min'})
+        color1 = hs_to_rgb(uut.color_for_point_hs(track_to_point('min_min')))
+        assert_that('light.test_light').was.turned_on(rgb_color=color1)
+
+        given_that.mock_functions_are_cleared()
+
+        media_player('media_player.spotify_test').update_state('playing', {'media_content_id': 'max_min'})
+        color2 = hs_to_rgb(uut.color_for_point_hs(track_to_point('max_min')))
+        assert_that('light.test_light').was.turned_on(rgb_color=color2)
+
+        assert color1 != color2
+
+
 class TestSetupErrors:
     @pytest.fixture
     def update_passed_args_empty(self, uut_empty):
