@@ -1,7 +1,7 @@
 import contextlib
 import os
 from appdaemontestframework import automation_fixture
-from apps.spotify_mood_lights_sync.spotify_mood_lights_sync import SpotifyMoodLightsSync, rgb_to_hsv, hsv_to_rgb, hsv_to_hs
+from apps.spotify_mood_lights_sync.spotify_mood_lights_sync import SpotifyMoodLightsSync
 from spotipy import Spotify
 from unittest.mock import patch
 from test_utils import *
@@ -129,12 +129,12 @@ class TestColorChange:
             given_that.passed_arg('custom_profile').is_set_to(CUSTOM_PROFILE_LEGACY)
 
         media_player('media_player.spotify_test').update_state('playing', {'media_content_id': 'min_min'})
-        assert_that('light.test_light').was.turned_on(rgb_color=(0, 0, 255))
+        assert_that('light.test_light').was.turned_on(rgb_color=(255, 255, 0))
 
         given_that.mock_functions_are_cleared()
 
         media_player('media_player.spotify_test').update_state('playing', {'media_content_id': 'min_max'})
-        assert_that('light.test_light').was.turned_on(rgb_color=(255, 0, 0))
+        assert_that('light.test_light').was.turned_on(rgb_color=(0, 255, 0))
 
 
 # TODO: find a way to check that the callback was _not_ registered

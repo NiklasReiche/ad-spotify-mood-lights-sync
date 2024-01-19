@@ -13,7 +13,6 @@ from requests.exceptions import ConnectionError
 from typing import Tuple, List, TypeVar, Callable, Iterable
 
 RGB_Color = Tuple[int, int, int]
-HSV_Color = Tuple[int, int, int]
 HS_Color = Tuple[int, int]
 Point = Tuple[float, float]
 T = TypeVar('T')
@@ -46,7 +45,7 @@ class ColorMode(Enum):
 
 
 class ColorProfile:
-    def __init__(self, color_mode, data, weight=1):
+    def __init__(self, color_mode, data, weight=1.0):
         self.color_mode = color_mode
         self.global_weight = weight
         self.points: List[Point] = [x[0] for x in data]
@@ -94,38 +93,25 @@ def interpolate(values: List[Num], weights: List[float]):
     return sum(mul_array(values, weights)) / sum(weights)
 
 
-def rgb_to_hsv(color: RGB_Color) -> HSV_Color:
+def rgb_to_hs(color: RGB_Color) -> HS_Color:
     color = colorsys.rgb_to_hsv(
         normalize(color[0], 0, 255, 0, 1),
         normalize(color[1], 0, 255, 0, 1),
         normalize(color[2], 0, 255, 0, 1))
 
     return int(normalize(color[0], 0, 1, 0, 360)), \
-        int(normalize(color[1], 0, 1, 0, 100)), \
-        int(normalize(color[2], 0, 1, 0, 100))
-
-
-def rgb_to_hs(color: RGB_Color) -> HS_Color:
-    return hsv_to_hs(rgb_to_hsv(color))
+        int(normalize(color[1], 0, 1, 0, 100))
 
 
 def hs_to_rgb(color: HS_Color) -> RGB_Color:
-    return hsv_to_rgb((color[0], color[1], 100))
-
-
-def hsv_to_rgb(color: RGB_Color) -> RGB_Color:
     color = colorsys.hsv_to_rgb(
         normalize(color[0], 0, 360, 0, 1),
         normalize(color[1], 0, 100, 0, 1),
-        normalize(color[2], 0, 100, 0, 1))
+        1.0)
 
     return int(normalize(color[0], 0, 1, 0, 255)), \
         int(normalize(color[1], 0, 1, 0, 255)), \
         int(normalize(color[2], 0, 1, 0, 255))
-
-
-def hsv_to_hs(color: HSV_Color) -> HS_Color:
-    return color[0], color[1]
 
 
 def to_max_brightness(color: RGB_Color):
@@ -178,6 +164,8 @@ class SpotifyMoodLightsSync(hass.Hass):
                     assert all([len(p) == 2 and len(c) == 3 for p, c, w in data])
                     assert all([0 <= p[0] <= 1 and 0 <= p[1] <= 1 for p, c, w in data])
                     assert all([0 <= c[0] <= 255 and 0 <= c[1] <= 255 and 0 <= c[2] <= 255 for p, c, w in data])
+
+                    self.color_profile = RGBColorProfile(data, weight=1.0)
 
                 except (KeyError, AssertionError):
                     self.error("Profile set to 'custom' but 'custom_profile' is malformed. Falling back to the default "
