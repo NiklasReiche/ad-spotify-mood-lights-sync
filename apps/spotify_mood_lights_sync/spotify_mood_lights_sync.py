@@ -103,7 +103,7 @@ def interpolate(values: List[Num], weights: List[float]):
     return sum(mul_array(values, weights)) / sum(weights)
 
 
-def rgb_to_hsv(color: RGB_Color) -> RGB_Color:
+def rgb_to_hsv(color: RGB_Color) -> HSV_Color:
     color = colorsys.rgb_to_hsv(
         normalize(color[0], 0, 255, 0, 1),
         normalize(color[1], 0, 255, 0, 1),
@@ -112,6 +112,14 @@ def rgb_to_hsv(color: RGB_Color) -> RGB_Color:
     return int(normalize(color[0], 0, 1, 0, 360)), \
         int(normalize(color[1], 0, 1, 0, 100)), \
         int(normalize(color[2], 0, 1, 0, 100))
+
+
+def rgb_to_hs(color: RGB_Color) -> HS_Color:
+    return hsv_to_hs(rgb_to_hsv(color))
+
+
+def hs_to_rgb(color: HS_Color) -> RGB_Color:
+    return hsv_to_rgb((color[0], color[1], 100))
 
 
 def hsv_to_rgb(color: RGB_Color) -> RGB_Color:
@@ -129,6 +137,10 @@ def hsv_to_hs(color: HSV_Color) -> HS_Color:
     return color[0], color[1]
 
 
+def to_max_brightness(color: RGB_Color):
+    return hs_to_rgb(rgb_to_hs(color))  # TODO: unnecessary normalizations
+
+
 class SpotifyMoodLightsSync(hass.Hass):
     """SpotifyMoodLightsSync class."""
 
@@ -141,13 +153,6 @@ class SpotifyMoodLightsSync(hass.Hass):
             self.error("'light' not specified in app config", level='WARNING')
 
         self.initial_light_state = None
-
-        try:
-            self.light_color_mode = self.args.get('light_color_mode', 'rgb')
-            assert self.light_color_mode == 'rgb' or self.light_color_mode == 'hs'
-        except AssertionError:
-            self.error(f"Unknown value '{self.light_color_mode}' for 'light_color_mode'. Must be 'rgb' or 'hs'.",
-                       level='ERROR')
 
         # setup spotify component
         client_id = self.args.get('client_id')
@@ -322,19 +327,14 @@ class SpotifyMoodLightsSync(hass.Hass):
         if self.light is None:
             return
 
-        if self.light_color_mode == 'rgb':
-            if self.color_profile.color_mode == ColorMode.HS:
-                color = hsv_to_rgb(color)
-            self.turn_on(self.light, **{'rgb_color': color})
-        elif self.light_color_mode == 'hs':
-            if self.color_profile.color_mode == ColorMode.RGB:
-                color = rgb_to_hsv(color)
-            self.turn_on(self.light, **{'hs_color': hsv_to_hs(color)})
-        else:
-            self.error(f"Unknown color mode '{self.light_color_mode}' for turn_on service on light entity",
-                       level='ERROR')
+        # use RGB for the HA service call
+        if self.color_profile.color_mode == ColorMode.HS:
+            color = hs_to_rgb(color)
 
-    def color_from_uri(self, track_uri: str) -> RGB_Color | HSV_Color:
+        # the color mode used here should not matter, since HA already converts it to a mode supported by the light
+        self.turn_on(self.light, **{'rgb_color': color})
+
+    def color_from_uri(self, track_uri: str) -> RGB_Color | HS_Color:
         """Get the color from a spotify track uri."""
 
         track_features = self.call_api(partial(self.sp.audio_features, track_uri))[0]
@@ -346,7 +346,7 @@ class SpotifyMoodLightsSync(hass.Hass):
         if self.color_profile.color_mode == ColorMode.RGB:
             color = self.color_for_point_rgb((valence, energy))
         elif self.color_profile.color_mode == ColorMode.HS:
-            color = self.color_for_point_hsv((valence, energy))
+            color = self.color_for_point_hs((valence, energy))
         else:
             raise ValueError("unknown color mode")
 
@@ -369,24 +369,16 @@ class SpotifyMoodLightsSync(hass.Hass):
         red = interpolate(self.color_profile.channels[0], weights)
         green = interpolate(self.color_profile.channels[1], weights)
         blue = interpolate(self.color_profile.channels[2], weights)
-        color = (red, green, blue)
 
-        # brighten color spectrum
-        sum_color, max_color = sum(color), max(color)
-        required_sum_color = 700.0
-        if max_color * (required_sum_color / sum_color) <= 255:
-            color = mul_scalar(color, required_sum_color / sum_color)
-        else:
-            color = mul_scalar(color, 255 / max_color)
+        # brightness should be max to not conflict with the light's brightness setting (equivalent to HS space)
+        return to_max_brightness((int(red), int(green), int(blue)))
 
-        return int(color[0]), int(color[1]), int(color[2])
-
-    def color_for_point_hsv(self, point: Point) -> HSV_Color:
-        """Computes an HSV color value for a point on the color plane.
+    def color_for_point_hs(self, point: Point) -> HS_Color:
+        """Computes an HS color value for a point on the color plane.
 
         :param point: coordinates in the range [0,1]X[0,1]
 
-        :return: interpolated HSV color for the input point as [h, s, v], where 0 <= h <= 360 and 0 <= s <= 100, v = 100
+        :return: interpolated HS color for the input point as [h, s], where 0 <= h <= 360 and 0 <= s <= 100
         """
 
         weights = inverse_distance_weights(point, self.color_profile.points, self.color_profile.local_weights,
@@ -406,7 +398,7 @@ class SpotifyMoodLightsSync(hass.Hass):
         assert 0 <= hue <= 360
         assert 0 <= saturation <= 100
 
-        return int(hue), int(saturation), 100
+        return int(hue), int(saturation)
 
     def create_color_map_image(self, height: int, width: int) -> List[RGB_Color]:
         """Creates an image of the color map in use.
@@ -425,7 +417,7 @@ class SpotifyMoodLightsSync(hass.Hass):
                 if self.color_profile.color_mode == ColorMode.RGB:
                     color = self.color_for_point_rgb((p_x, p_y))
                 elif self.color_profile.color_mode == ColorMode.HS:
-                    color = hsv_to_rgb(self.color_for_point_hsv((p_x, p_y)))
+                    color = hs_to_rgb(self.color_for_point_hs((p_x, p_y)))
                 else:
                     raise Exception("unknown color mode")
                 image.append(color)
