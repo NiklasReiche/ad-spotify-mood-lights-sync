@@ -129,8 +129,6 @@ class SpotifyMoodLightsSync(hass.Hass):
         if not self.light:
             self.error("'light' not specified in app config", level='WARNING')
 
-        self.initial_light_state = None
-
         # setup spotify component
         client_id = self.args.get('client_id')
         if not client_id:
