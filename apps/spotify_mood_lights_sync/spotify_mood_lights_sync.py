@@ -1,5 +1,4 @@
 import numbers
-from enum import Enum
 
 import appdaemon.plugins.hass.hassapi as hass
 import math
@@ -59,11 +58,6 @@ PROFILE_SATURATED = {
     'rotation': -60,
     'drop_off': 0,
 }
-
-
-class ColorMode(Enum):
-    RGB = 'RGB'
-    HS = 'HS'
 
 
 class ColorProfile:
@@ -139,38 +133,28 @@ def mul_scalar(list_a: Iterable[Num], scalar: float) -> List[Num]:
 
 
 def inverse_distance_weights(point: Point, points: List[Point], local_weights: List[float], global_weight=1.0):
+    """Calculates the weights for inverse distance weighting."""
     distances = [math.dist(point, p) for p in points]
     weights = [1 / ((d + 1E-6) ** (global_weight * w)) for d, w in zip(distances, local_weights)]
     return weights
 
 
 def interpolate(values: List[Num], weights: List[float]):
+    """Performs inverse distance weighting with precomputed weights."""
     return sum(mul_array(values, weights)) / sum(weights)
 
 
-def rgb_to_hs(color: RGB_Color) -> HS_Color:
-    color = colorsys.rgb_to_hsv(
-        normalize(color[0], 0, 255, 0, 1),
-        normalize(color[1], 0, 255, 0, 1),
-        normalize(color[2], 0, 255, 0, 1))
-
-    return int(normalize(color[0], 0, 1, 0, 360)), \
-        int(normalize(color[1], 0, 1, 0, 100))
-
-
 def hs_to_rgb(color: HS_Color) -> RGB_Color:
-    color = colorsys.hsv_to_rgb(
-        normalize(color[0], 0, 360, 0, 1),
-        normalize(color[1], 0, 100, 0, 1),
-        1.0)
-
-    return int(normalize(color[0], 0, 1, 0, 255)), \
-        int(normalize(color[1], 0, 1, 0, 255)), \
-        int(normalize(color[2], 0, 1, 0, 255))
+    """Converts from hs to rgb color space. The resulting color has maximal brightness."""
+    color = colorsys.hsv_to_rgb(color[0] / 360.0, color[1] / 100.0, 1.0)
+    return int(color[0] * 255), int(color[1] * 255), int(color[2] * 255)
 
 
-def to_max_brightness(color: RGB_Color):
-    return hs_to_rgb(rgb_to_hs(color))
+def to_max_brightness(color: RGB_Color) -> RGB_Color:
+    """Maximizes the brightness of the given rgb color."""
+    hsv = colorsys.rgb_to_hsv(color[0] / 255.0, color[1] / 255.0, color[2] / 255.0)
+    rgb = colorsys.hsv_to_rgb(hsv[0], hsv[1], 1.0)  # set max brightness
+    return int(rgb[0] * 255), int(rgb[1] * 255), int(rgb[2] * 255)
 
 
 class SpotifyMoodLightsSync(hass.Hass):
