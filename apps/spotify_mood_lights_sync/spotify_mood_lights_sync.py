@@ -69,10 +69,11 @@ class RGBColorProfile(ColorProfile):
 
 
 class HSColorProfile(ColorProfile):
-    def __init__(self, mirror_x, mirror_y, rotate):
+    def __init__(self, mirror_x, mirror_y, rotate, drop_off):
         self.mirror_x = mirror_x
         self.mirror_y = mirror_y
         self.rotate = rotate
+        self.drop_off = drop_off
         pass
 
     def color_for_point(self, point: Point) -> RGB_Color:
@@ -86,10 +87,10 @@ class HSColorProfile(ColorProfile):
         hue = (angle + 360) % 360
 
         # calculate saturation as distance to center, clamped to unit circle
-        distance = min(math.dist([0.0, 0.0], point), 1.0)  # TODO: drop-off
+        distance = min(math.dist([0.0, 0.0], point), 1.0) ** self.drop_off
         saturation = normalize(distance, 0, 1, 0, 100)
 
-        return hs_to_rgb((int(hue), int(100)))
+        return hs_to_rgb((int(hue), int(saturation)))
 
 
 def normalize(v, in_min, in_max, out_min, out_max):
@@ -171,7 +172,7 @@ class SpotifyMoodLightsSync(hass.Hass):
         if color_profile_arg == 'default' or color_profile_arg == 'centered':
             self.color_profile = RGBColorProfile(DEFAULT_PROFILE)
         elif color_profile_arg == 'saturated':
-            self.color_profile = HSColorProfile(True, False, -60)
+            self.color_profile = HSColorProfile(True, False, -60, 0)
         elif color_profile_arg == 'custom':
             custom_profile = self.args.get('custom_profile')
             if type(custom_profile) is list:  # legacy config, assume RGB values without weights
