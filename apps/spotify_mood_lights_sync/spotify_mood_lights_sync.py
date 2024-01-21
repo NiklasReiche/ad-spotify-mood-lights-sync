@@ -243,7 +243,7 @@ class SpotifyMoodLightsSync(hass.Hass):
 
         def parse_rgb() -> RGBColorProfile:
             config = {
-                'global_weight': custom_profile.get('global_weight', 1.5),
+                'global_weight': custom_profile.get('global_weight', 1.0),
                 'sample_data': [{
                     'point': x['point'],
                     'color': x['color'],
