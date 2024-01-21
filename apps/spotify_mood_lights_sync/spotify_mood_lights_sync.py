@@ -10,7 +10,7 @@ import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 from requests.exceptions import ConnectionError
 
-from typing import Tuple, List, TypeVar, Callable, Iterable
+from typing import Tuple, List, Dict, TypeVar, Callable, Iterable
 
 RGB_Color = Tuple[int, int, int]
 HS_Color = Tuple[int, int]
@@ -18,15 +18,47 @@ Point = Tuple[float, float]
 T = TypeVar('T')
 Num = TypeVar('Num', int, float)
 
-DEFAULT_PROFILE = [
-    ((0.0, 0.5), (128, 0, 128), 1.0),   # disgust - purple
-    ((0.0, 1.0), (255, 0, 0), 1.0),     # angry - red
-    ((0.5, 1.0), (255, 165, 0), 1.0),   # alert - orange
-    ((1.0, 1.0), (255, 255, 0), 1.0),   # happy - yellow
-    ((1.0, 0.0), (0, 205, 0), 1.0),     # calm - green
-    ((0.5, 0.0), (0, 180, 255), 1.0),   # relaxed - bluegreen
-    ((0.0, 0.0), (0, 0, 255), 1.0),     # sad - blue
-]
+PROFILE_DEFAULT = {
+    'global_weight': 2,
+    'sample_data': [
+        {
+            'point': (0.0, 0.5),
+            'color': (128, 0, 128),
+            'local_weight': 1
+        }, {
+            'point': (0.0, 1.0),
+            'color': (255, 0, 0),
+            'local_weight': 1
+        }, {
+            'point': (0.5, 1.0),
+            'color': (255, 165, 0),
+            'local_weight': 1
+        }, {
+            'point': (1.0, 1.0),
+            'color': (255, 255, 0),
+            'local_weight': 1
+        }, {
+            'point': (1.0, 0.0),
+            'color': (0, 205, 0),
+            'local_weight': 1
+        }, {
+            'point': (0.5, 0.0),
+            'color': (0, 180, 255),
+            'local_weight': 1
+        }, {
+            'point': (0.0, 0.0),
+            'color': (0, 0, 255),
+            'local_weight': 1
+        }
+    ]
+}
+
+PROFILE_SATURATED = {
+    'mirror_x': True,
+    'mirror_y': False,
+    'rotation': -60,
+    'drop_off': 0,
+}
 
 
 class ColorMode(Enum):
@@ -46,14 +78,15 @@ class ColorProfile:
 
 
 class RGBColorProfile(ColorProfile):
-    def __init__(self, data, global_weight=2.0):
-        self.global_weight = global_weight
-        self.points: List[Point] = [x[0] for x in data]
-        self.local_weights: List[float] = [x[2] for x in data]
-        self.channels: Tuple[List[int], List[int], List[int]] | Tuple[List[int], List[int]] = \
-            ([x[1][0] for x in data],
-             [x[1][1] for x in data],
-             [x[1][2] for x in data])
+    def __init__(self, config: Dict):
+        self.global_weight = config.get('global_weight', 1.0)
+        samples: List[Dict] = config.get('sample_data', [])
+        self.points: List[Point] = [x.get('point', (0, 0)) for x in samples]
+        self.local_weights: List[float] = [x.get('local_weight', 1.0) for x in samples]
+        self.channels: Tuple[List[int], List[int], List[int]] = \
+            ([x.get('color', (255, 255, 255))[0] for x in samples],
+             [x.get('color', (255, 255, 255))[1] for x in samples],
+             [x.get('color', (255, 255, 255))[2] for x in samples])
 
     def color_for_point(self, point: Point) -> RGB_Color:
         weights = inverse_distance_weights(point, self.points, self.local_weights,
@@ -69,11 +102,11 @@ class RGBColorProfile(ColorProfile):
 
 
 class HSColorProfile(ColorProfile):
-    def __init__(self, mirror_x, mirror_y, rotate, drop_off):
-        self.mirror_x = mirror_x
-        self.mirror_y = mirror_y
-        self.rotate = rotate
-        self.drop_off = drop_off
+    def __init__(self, config: Dict):
+        self.mirror_x = config.get('mirror_x')
+        self.mirror_y = config.get('mirror_y')
+        self.rotation = config.get('rotation')
+        self.drop_off = config.get('drop_off')
         pass
 
     def color_for_point(self, point: Point) -> RGB_Color:
@@ -82,8 +115,8 @@ class HSColorProfile(ColorProfile):
         # calculate hue from angle to center
         x = point[0] * (-1.0 if self.mirror_x else 1.0)
         y = point[1] * (-1.0 if self.mirror_y else 1.0)
-        angle = math.degrees(math.atan2(y, x)) + self.rotate
-        # map to 0-360 degree range
+        angle = math.degrees(math.atan2(y, x)) + self.rotation
+        # map to [0, 360) degree range
         hue = (angle + 360) % 360
 
         # calculate saturation as distance to center, clamped to unit circle
@@ -169,67 +202,15 @@ class SpotifyMoodLightsSync(hass.Hass):
 
         # setup color profile
         color_profile_arg = self.args.get('color_profile', 'default')
-        if color_profile_arg == 'default' or color_profile_arg == 'centered':
-            self.color_profile = RGBColorProfile(DEFAULT_PROFILE)
+        if color_profile_arg == 'default' or color_profile_arg == 'centered':  # legacy option for centered
+            self.color_profile = RGBColorProfile(PROFILE_DEFAULT)
         elif color_profile_arg == 'saturated':
-            self.color_profile = HSColorProfile(True, False, -60, 0)
+            self.color_profile = HSColorProfile(PROFILE_SATURATED)
         elif color_profile_arg == 'custom':
-            custom_profile = self.args.get('custom_profile')
-            if type(custom_profile) is list:  # legacy config, assume RGB values without weights
-                self.error("Using deprecated custom_profile config format. See README for new format.", level='WARNING')
-                try:
-                    data = [(x['point'], x['color'], 1.0) for x in custom_profile]
-
-                    assert len(data) > 0
-                    assert all([len(p) == 2 and len(c) == 3 for p, c, w in data])
-                    assert all([0 <= p[0] <= 1 and 0 <= p[1] <= 1 for p, c, w in data])
-                    assert all([0 <= c[0] <= 255 and 0 <= c[1] <= 255 and 0 <= c[2] <= 255 for p, c, w in data])
-
-                    self.color_profile = RGBColorProfile(data, weight=1.0)
-
-                except (KeyError, AssertionError):
-                    self.error("Profile set to 'custom' but 'custom_profile' is malformed. Falling back to the default "
-                               "profile", level='WARNING')
-                    self.color_profile = RGBColorProfile(DEFAULT_PROFILE)
-            elif custom_profile:
-                try:
-                    mode = custom_profile['color_mode']
-                    weight = custom_profile.get('global_weight', 1.5)
-                    data = [(x['point'], x['color'], x.get('local_weight', 1.0))
-                            for x in custom_profile['sample_data']]
-
-                    assert len(data) > 0
-                    assert all([isinstance(w, numbers.Number) for p, c, w in data])
-                    assert all([0 <= p[0] <= 1 and 0 <= p[1] <= 1 for p, c, w in data])
-
-                    if mode == 'rgb':
-                        assert all([len(p) == 2 and len(c) == 3 for p, c, w in data])
-                        assert all([0 <= c[0] <= 255 and 0 <= c[1] <= 255 and 0 <= c[2] <= 255 for p, c, w in data])
-
-                        self.color_profile = RGBColorProfile(data, weight=weight)
-
-                    elif mode == 'hs':
-                        assert all([len(p) == 2 and len(c) == 2 for p, c, w in data])
-                        assert all([0 <= c[0] <= 360 and 0 <= c[1] <= 100 for p, c, w in data])
-
-                        self.color_profile = HSColorProfile(data, weight=weight)
-
-                    else:
-                        self.error(
-                            f"Unknown color mode '{mode}' in 'custom_profile'. Must be 'rgb' or 'hs'. Falling back to "
-                            f"the default profile", level='WARNING')
-                        self.color_profile = RGBColorProfile(DEFAULT_PROFILE)
-                except (KeyError, AssertionError):
-                    self.error("Profile set to 'custom' but 'custom_profile' is malformed. Falling back to the default "
-                               "profile", level='WARNING')
-                    self.color_profile = RGBColorProfile(DEFAULT_PROFILE)
-            else:
-                self.error("Profile set to 'custom' but no 'custom_profile' specified in app config. Falling back to "
-                           "the default profile", level='WARNING')
-                self.color_profile = RGBColorProfile(DEFAULT_PROFILE)
+            self.color_profile = self.parse_custom_profile()
         else:
             self.error(f"Unknown profile '{color_profile_arg}'. Falling back to the default profile", level='WARNING')
-            self.color_profile = RGBColorProfile(DEFAULT_PROFILE)
+            self.color_profile = RGBColorProfile(PROFILE_DEFAULT)
 
         # output color map as image for debugging
         color_map_image = self.args.get("color_map_image")
@@ -260,6 +241,80 @@ class SpotifyMoodLightsSync(hass.Hass):
             self.listen_state(self.sync_lights_from_search, media_player, attribute='all')
 
         self.log(f"App started. Listening on {media_player}")
+
+    def parse_custom_profile(self) -> ColorProfile:
+        def parse_legacy() -> RGBColorProfile:
+            data = [{'point': x['point'], 'color': x['color'], 'local_weight': 1.0} for x in custom_profile]
+
+            assert len(data) > 0
+            assert all([len(x['point']) == 2 and len(x['color']) == 3 and
+                        0 <= x['point'][0] <= 1 and 0 <= x['point'][1] <= 1 and
+                        0 <= x['color'][0] <= 255 and 0 <= x['color'][1] <= 255 and 0 <= x['color'][2] <= 255
+                        for x in data])
+
+            return RGBColorProfile({
+                'global_weight': 1.0,
+                'sample_data': data
+            })
+
+        def parse_rgb() -> RGBColorProfile:
+            config = {
+                'global_weight': custom_profile.get('global_weight', 1.5),
+                'sample_data': [{
+                    'point': x['point'],
+                    'color': x['color'],
+                    'local_weight': x.get('local_weight', 1.0)
+                } for x in custom_profile['sample_data']]
+            }
+
+            assert len(config['sample_data']) > 0
+            assert all([(isinstance(x['local_weight'], numbers.Number) and
+                         len(x['point']) == 2 and len(x['color']) == 3 and
+                         0 <= x['point'][0] <= 1 and 0 <= x['point'][1] <= 1 and
+                         0 <= x['color'][0] <= 255 and 0 <= x['color'][1] <= 255 and 0 <= x['color'][2] <= 255)
+                        for x in config['sample_data']])
+
+            return RGBColorProfile(config)
+
+        def parse_hs() -> HSColorProfile:
+            config = {
+                'mirror_x': custom_profile.get('mirror_x', False),
+                'mirror_y': custom_profile.get('mirror_y', False),
+                'rotation': custom_profile.get('rotation', 0),
+                'drop_off': custom_profile.get('drop_off', 1),
+            }
+
+            assert isinstance(config['mirror_x'], bool)
+            assert isinstance(config['mirror_y'], bool)
+            assert isinstance(config['rotation'], numbers.Number)
+            assert config['drop_off'] >= 0
+
+            return HSColorProfile(config)
+
+        custom_profile = self.args.get('custom_profile')
+        try:
+            if type(custom_profile) is list:  # legacy config, assume RGB values without weights
+                self.error("Using deprecated custom_profile config format. See README for new format.", level='WARNING')
+                return parse_legacy()
+            elif custom_profile:
+                mode = custom_profile.get('color_mode')
+                if mode == 'rgb':
+                    return parse_rgb()
+                elif mode == 'hs':
+                    return parse_hs()
+                else:
+                    self.error(
+                        f"Unknown color mode '{mode}' in 'custom_profile'. Must be 'rgb' or 'hs'. Falling back to "
+                        f"the default profile", level='WARNING')
+                    return RGBColorProfile(PROFILE_DEFAULT)
+            else:
+                self.error("Profile set to 'custom' but no 'custom_profile' specified in app config. Falling back to "
+                           "the default profile", level='WARNING')
+                return RGBColorProfile(PROFILE_DEFAULT)
+        except (KeyError, AssertionError):
+            self.error("Profile set to 'custom' but 'custom_profile' is malformed. Falling back to the default "
+                       "profile", level='WARNING')
+            return RGBColorProfile(PROFILE_DEFAULT)
 
     def sync_lights_from_spotify(self, entity: str, attribute: str, old_uri: str, new_uri: str, kwargs) -> None:
         if new_uri is None or old_uri == new_uri:
