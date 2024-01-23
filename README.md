@@ -7,9 +7,9 @@ _AppDaemon app that synchronizes rgb lights to the mood of the currently playing
 ## About
 
 This app uses the Spotify API to extract the emotional mood value of the currently playing track. Each mood value lies
-on a 2D plane which is mapped to a color spectrum from which the rgb color for the light is picked.
+on a 2D plane which is mapped to a color spectrum from which the color for the light is picked.
 
-The default color map used by the app looks as follows. The horizontal axis ranges from negative (left) to positive
+The built-in color maps used by the app look as follows. The horizontal axis ranges from negative (left) to positive
 (right) emotion while the vertical axis ranges from low (bottom) to high (top) energy. A sad, slow song is thus mapped
 to blue light while a happy, upbeat song is mapped to yellow light.
 
@@ -29,9 +29,9 @@ python_packages:
 Use [HACS](https://hacs.xyz/) or download the `spotify_mood_lights_sync` directory from inside the `apps` directory here
 to your local `apps` directory, then add the configuration to your `/config/appdaemon/apps/apps.yaml`.
 
-#### Minimal configuration:
+## Minimal configuration
 
-The following shows a minimal example configuration (the spotify credentials are supplied via a secrets file):
+The following shows a minimal example configuration (the spotify credentials are supplied via a secrets file here):
 
 ```yaml
 spotify_mood_lights_sync:
@@ -43,7 +43,7 @@ spotify_mood_lights_sync:
   light: light.bedroom
 ```
 
-#### Conditional execution
+## Conditional execution
 
 You can switch the light synchronization on and off through Home Assistant by using
 AppDaemon [Callback Constraints](https://appdaemon.readthedocs.io/en/latest/APPGUIDE.html#hass-plugin-constraints). For
@@ -95,31 +95,31 @@ If a track cannot be found in Spotify the light will not be synced for that song
 
 ## Full app configuration
 
-| key                                       | optional | type    | default   | description                                                                                                                                                                                                                    |
-|-------------------------------------------|----------|---------|-----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `module`                                  | False    | string  |           | The module name of the app.                                                                                                                                                                                                    |
-| `class`                                   | False    | string  |           | The name of the Class.                                                                                                                                                                                                         |
-| `client_id`                               | False    | string  |           | The client id of the Spotify-For-Developers app to use for accessing the Spotify API.                                                                                                                                          |
-| `client_secret`                           | False    | string  |           | The client secret of the Spotify-For-Developers app to use for accessing the Spotify API.                                                                                                                                      |
-| `media_player`                            | False    | string  |           | The entity_id of the media player to sync from.                                                                                                                                                                                |
-| `light`                                   | False    | string  |           | The entity_id of the light or light group to sync.                                                                                                                                                                             |
-| `color_profile`                           | True     | string  | `default` | The color profile to use for mapping moods to colors. Possible values are `default`, `centered`, or `custom`. When `custom` is specified, the color map will be built from the point-color pairs provided in `custom_profile`. |
-| `mode`                                    | True     | string  | `direct`  | Possible values are `direct` or `search`. Use `search` if you want to use a non-spotify `media_player`. Use `direct` when using a spotify `media_player`.                                                                      
-| `max_retries`                             | True     | number  | `1`       | Number of times a Spotify API call should be retried after a connection error before the track is skipped.                                                                                                                     
-| `custom_profile`                          | True     | object  |           | Parameters to use for the `custom` `color_profile`. See `Custom color profile` section.                                                                                                                                        |
-| `custom_profile.color_mode`               | False    | string  |           | Possible values are 'rgb' or 'hs'. See `Custom color profile` section.                                                                                                                                                                                            |
-| `custom_profile.global_weight`            | True     | number  | `1`       | Used in 'rgb' mode. Weight applied to all sampling points. See `Custom color profile` section.                                                                                                                                                                    |
-| `custom_profile.sample_data`              | False    | object  |           | Used in 'rgb' mode. Sample data consisting of point-color pairs. See `Custom color profile` section.                                                                                                                                                              |
-| `custom_profile.sample_data.point`        | False    | tuple   |           | Used in 'rgb' mode. A point in the [0, 1]X[0, 1] range. See `Custom color profile` section.                                                                                                                                                                       |
-| `custom_profile.sample_data.color`        | False    | tuple   |           | Used in 'rgb' mode. An RGB color value in the [0,255] range for each channel. See `Custom color profile` section.                                                                                                                                                 |
-| `custom_profile.sample_data.local_weight` | True     | number  | `1`       | Used in 'rgb' mode. Weight applied to the sample point. See `Custom color profile` section.                                                                                                                                                                       |
-| `custom_profile.mirror_x`                 | True     | boolean | `False`   | Used in 'hs' mode. Mirrors the hue angle in the x direction. See `Custom color profile` section.                                                                                                                                                                  |
-| `custom_profile.mirror_y`                 | True     | boolean | `False`   | Used in 'hs' mode. Mirrors the hue angle in the y direction. See `Custom color profile` section.                                                                                                                                                                  |
-| `custom_profile.rotation`                 | True     | number  | `0`       | Used in 'hs' mode. Rotates the hue angle. See `Custom color profile` section.                                                                                                                                                                                     |
-| `custom_profile.drop_off`                 | True     | number  | `1`       | Used in 'hs' mode. How fast the saturation drops off towards the center (0 for no saturation loss). See `Custom color profile` section.                                                                                                                           |
-| `color_map_image`                         | True     | object  |           | Output the color map as an image for debugging.                                                                                                                                                                                |
-| `color_map_image.size`                    | False    | number  |           | Size (height=width) of the output image in pixels.                                                                                                                                                                             |
-| `color_map_image.location`                | False    | string  |           | Path to which the image should be saved.                                                                                                                                                                                       |
+| key                                       | optional | type    | default   | description                                                                                                                                                                                                     |
+|-------------------------------------------|----------|---------|-----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `module`                                  | False    | string  |           | The module name of the app. Must be `spotify_mood_lights_sync`.                                                                                                                                                 |
+| `class`                                   | False    | string  |           | The name of the Class. Must be `SpotifyMoodLightsSync`.                                                                                                                                                         |
+| `client_id`                               | False    | string  |           | The client id of the Spotify-For-Developers app to use for accessing the Spotify API.                                                                                                                           |
+| `client_secret`                           | False    | string  |           | The client secret of the Spotify-For-Developers app to use for accessing the Spotify API.                                                                                                                       |
+| `media_player`                            | False    | string  |           | The entity_id of the media player to sync from.                                                                                                                                                                 |
+| `light`                                   | False    | string  |           | The entity_id of the light or light group to sync.                                                                                                                                                              |
+| `color_profile`                           | True     | string  | `default` | The color profile to use for mapping moods to colors. Possible values are `default`, `saturated`, or `custom`. When `custom` is specified, the color map will be built from the parameters in `custom_profile`. |
+| `mode`                                    | True     | string  | `direct`  | Possible values are `direct` or `search`. Use `search` if you want to use a non-spotify `media_player`. Use `direct` when using a spotify `media_player`.                                                       |
+| `max_retries`                             | True     | number  | `1`       | Number of times a Spotify API call should be retried after a connection error before the track is skipped.                                                                                                      |
+| `custom_profile`                          | True     | object  |           | Parameters to use for the `custom` `color_profile`. See `Custom color profile` section.                                                                                                                         |
+| `custom_profile.color_mode`               | False    | string  |           | Possible values are 'rgb' or 'hs'. See `Custom color profile` section.                                                                                                                                          |
+| `custom_profile.global_weight`            | True     | number  | `1`       | Used in 'rgb' mode. Weight applied to all sampling points. See `Custom color profile` section.                                                                                                                  |
+| `custom_profile.sample_data`              | False    | object  |           | Used in 'rgb' mode. Sample data consisting of point-color pairs. See `Custom color profile` section.                                                                                                            |
+| `custom_profile.sample_data.point`        | False    | tuple   |           | Used in 'rgb' mode. A point in the [0, 1]X[0, 1] range. See `Custom color profile` section.                                                                                                                     |
+| `custom_profile.sample_data.color`        | False    | tuple   |           | Used in 'rgb' mode. An RGB color value in the [0,255] range for each channel. See `Custom color profile` section.                                                                                               |
+| `custom_profile.sample_data.local_weight` | True     | number  | `1`       | Used in 'rgb' mode. Weight applied to the sample point. See `Custom color profile` section.                                                                                                                     |
+| `custom_profile.mirror_x`                 | True     | boolean | `False`   | Used in 'hs' mode. Mirrors the hue angle in the x direction. See `Custom color profile` section.                                                                                                                |
+| `custom_profile.mirror_y`                 | True     | boolean | `False`   | Used in 'hs' mode. Mirrors the hue angle in the y direction. See `Custom color profile` section.                                                                                                                |
+| `custom_profile.rotation`                 | True     | number  | `0`       | Used in 'hs' mode. Rotates the hue angle. See `Custom color profile` section.                                                                                                                                   |
+| `custom_profile.drop_off`                 | True     | number  | `1`       | Used in 'hs' mode. How fast the saturation drops off towards the center (0 for no saturation loss). See `Custom color profile` section.                                                                         |
+| `color_map_image`                         | True     | object  |           | Output the color map as an image for debugging.                                                                                                                                                                 |
+| `color_map_image.size`                    | False    | number  |           | Size (height=width) of the output image in pixels.                                                                                                                                                              |
+| `color_map_image.location`                | False    | string  |           | Path to which the image should be saved.                                                                                                                                                                        |
 
 ## Custom color profile
 
