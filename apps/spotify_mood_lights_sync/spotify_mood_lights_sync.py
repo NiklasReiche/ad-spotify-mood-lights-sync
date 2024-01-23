@@ -157,6 +157,26 @@ def to_max_brightness(color: RGB_Color) -> RGB_Color:
     return int(rgb[0] * 255), int(rgb[1] * 255), int(rgb[2] * 255)
 
 
+def create_color_map_image(color_profile: ColorProfile, height: int, width: int) -> List[RGB_Color]:
+    """Creates an image of the color map in use.
+
+    :param color_profile: The profile from which to sample colors
+    :param height: height of the output image in pixels
+    :param width: width of the output image in pixels
+
+    :return: RGB image of the color plane as a flat list of pixel tuples, where 0 <= r,g,b <= 255
+    """
+
+    image = []
+    for y in reversed(range(0, height)):
+        for x in range(0, width):
+            p_y = normalize(y, 0, height - 1, 0, 1)
+            p_x = normalize(x, 0, width - 1, 0, 1)
+            color = color_profile.color_for_point((p_x, p_y))
+            image.append(color)
+    return image
+
+
 class SpotifyMoodLightsSync(hass.Hass):
     """SpotifyMoodLightsSync class."""
 
@@ -204,7 +224,7 @@ class SpotifyMoodLightsSync(hass.Hass):
             if size and location:
                 from PIL import Image
                 im = Image.new('RGB', (size, size))
-                im.putdata(self.create_color_map_image(size, size))
+                im.putdata(create_color_map_image(self.color_profile, size, size))
                 try:
                     im.save(location)
                 except OSError as e:
@@ -371,24 +391,6 @@ class SpotifyMoodLightsSync(hass.Hass):
         self.log(f"Got color {color} for valence {valence} and energy {energy} in track '{track_uri}'", level='DEBUG')
 
         return color
-
-    def create_color_map_image(self, height: int, width: int) -> List[RGB_Color]:
-        """Creates an image of the color map in use.
-
-        :param height: height of the output image in pixels
-        :param width: width of the output image in pixels
-
-        :return: RGB image of the color plane as a flat list of pixel tuples, where 0 <= r,g,b <= 255
-        """
-
-        image = []
-        for y in reversed(range(0, height)):
-            for x in range(0, width):
-                p_y = normalize(y, 0, height - 1, 0, 1)
-                p_x = normalize(x, 0, width - 1, 0, 1)
-                color = self.color_profile.color_for_point((p_x, p_y))
-                image.append(color)
-        return image
 
     def call_api(self, func: Callable[[], T]) -> T:
         retries = self.max_retries

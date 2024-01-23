@@ -13,7 +13,7 @@ The default color map used by the app looks as follows. The horizontal axis rang
 (right) emotion while the vertical axis ranges from low (bottom) to high (top) energy. A sad, slow song is thus mapped
 to blue light while a happy, upbeat song is mapped to yellow light.
 
-<img src="https://github.com/NiklasReiche/ha-spotify-lights-sync/blob/master/examples/default_profile_plot.png" alt="default color profile" width=500>
+<img src="https://github.com/NiklasReiche/ha-spotify-lights-sync/blob/master/profiles.png" alt="color profiles" width=500>
 
 ## Prerequisites
 

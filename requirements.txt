@@ -4,3 +4,4 @@ pytest
 spotipy
 Pillow
 requests
+matplotlib
