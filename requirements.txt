@@ -3,3 +3,6 @@ autopep8
 pytest
 spotipy
 Pillow
+requests
+matplotlib
+appdaemon

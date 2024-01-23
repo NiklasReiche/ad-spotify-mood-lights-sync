@@ -17,12 +17,31 @@ SONGS = {
     ("song 1", "artist 2"): "max_max",
 }
 
-CUSTOM_PROFILE = [
-    {'point': [0, 0], 'color': [0, 0, 255]},
-    {'point': [1, 0], 'color': [0, 255, 0]},
-    {'point': [0, 1], 'color': [255, 0, 0]},
-    {'point': [1, 1], 'color': [255, 255, 0]},
+CUSTOM_PROFILE_LEGACY = [
+    {'point': [1, 1], 'color': [0, 0, 255]},
+    {'point': [0, 1], 'color': [0, 255, 0]},
+    {'point': [1, 0], 'color': [255, 0, 0]},
+    {'point': [0, 0], 'color': [255, 255, 0]},
 ]
+
+CUSTOM_PROFILE_RGB = {
+    'color_mode': "rgb",
+    'global_weight': 2,
+    'sample_data': [
+        {'point': [1, 1], 'color': [0, 0, 255]},
+        {'point': [0, 1], 'color': [0, 255, 0], 'local_weight': 0.8},
+        {'point': [1, 0], 'color': [255, 0, 0], 'local_weight': 2},
+        {'point': [0, 0], 'color': [255, 255, 0]},
+    ]
+}
+
+CUSTOM_PROFILE_HS = {
+    'color_mode': "hs",
+    'mirror_x': True,
+    'mirror_y': True,
+    'rotation': -70,
+    'drop_off': 0.5
+}
 
 
 class NetworkState:

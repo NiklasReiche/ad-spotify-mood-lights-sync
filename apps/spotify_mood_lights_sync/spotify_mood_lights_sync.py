@@ -1,49 +1,196 @@
-import appdaemon.plugins.hass.hassapi as hass
+import numbers
+
+from appdaemon.plugins.hass.hassapi import Hass
 import math
+import colorsys
 from functools import partial
 
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 from requests.exceptions import ConnectionError
 
-from typing import Tuple, List, TypeVar, Callable, Iterable
+from typing import Tuple, List, Dict, TypeVar, Callable, Iterable
 
-Color = Tuple[int, int, int]
+RGB_Color = Tuple[int, int, int]
+HS_Color = Tuple[int, int]
 Point = Tuple[float, float]
 T = TypeVar('T')
 Num = TypeVar('Num', int, float)
 
-DEFAULT_PROFILE = [
-    ((0.0, 0.5), (128, 0, 128)),  # disgust - purple
-    ((0.0, 1.0), (255, 0, 0)),  # angry - red
-    ((0.5, 1.0), (255, 165, 0)),  # alert - orange
-    ((1.0, 1.0), (255, 255, 0)),  # happy - yellow
-    ((1.0, 0.0), (0, 205, 0)),  # calm - green
-    ((0.5, 0.0), (0, 165, 255)),  # relaxed - bluegreen
-    ((0.0, 0.0), (0, 0, 255)),  # sad - blue
-]
-CENTERED_PROFILE = [
-    ((0.05, 0.5), (128, 0, 128)),  # disgust - purple
-    ((0.25, 0.75), (255, 0, 0)),  # angry - red
-    ((0.5, 0.8), (255, 165, 0)),  # alert - orange
-    ((0.75, 0.75), (255, 255, 0)),  # happy - yellow
-    ((0.7, 0.3), (0, 205, 0)),  # calm - green
-    ((0.5, 0.2), (0, 165, 255)),  # relaxed - bluegreen
-    ((0.25, 0.25), (0, 0, 255)),  # sad - blue
-    ((0.5, 0.5), (255, 241, 224)),  # neutral - neutral
-]
+
+class ColorProfile:
+    def color_for_point(self, point: Point) -> RGB_Color:
+        """Computes an RGB color value for a point on the color plane.
+
+        :param point: coordinates in the range [0,1]X[0,1]
+
+        :return: interpolated RGB color for the input point as [r, g, b] where 0 <= r,g,b <= 255
+        """
+        pass
 
 
-class SpotifyMoodLightsSync(hass.Hass):
+class RGBColorProfile(ColorProfile):
+    points: List[Point]
+    local_weights: List[float]
+    channels: Tuple[List[int], List[int], List[int]]
+
+    def __init__(self, config: Dict):
+        self.global_weight = config.get('global_weight', 1.0)
+        samples: List[Dict] = config.get('sample_data', [])
+        self.points = [x.get('point', (0, 0)) for x in samples]
+        self.local_weights = [x.get('local_weight', 1.0) for x in samples]
+        self.channels = ([x.get('color', (255, 255, 255))[0] for x in samples],
+                         [x.get('color', (255, 255, 255))[1] for x in samples],
+                         [x.get('color', (255, 255, 255))[2] for x in samples])
+
+    def color_for_point(self, point: Point) -> RGB_Color:
+        def mul_array(list_a: Iterable[Num], list_b: Iterable[float]) -> List[float]:
+            return [ab[0] * ab[1] for ab in zip(list_a, list_b)]
+
+        def inverse_distance_weights(p: Point, samples: List[Point], local_weights: List[float], global_weight):
+            distances = [math.dist(p, s) for s in samples]
+            return [1 / ((d + 1E-6) ** (global_weight * w)) for d, w in zip(distances, local_weights)]
+
+        def interpolate(values: List[Num], weights: List[float]):
+            return sum(mul_array(values, weights)) / sum(weights)
+
+        precomputed_weights = inverse_distance_weights(point, self.points, self.local_weights,
+                                           global_weight=self.global_weight)
+
+        # compute new RGB value as inverse distance weighted sum:
+        red = interpolate(self.channels[0], precomputed_weights)
+        green = interpolate(self.channels[1], precomputed_weights)
+        blue = interpolate(self.channels[2], precomputed_weights)
+
+        # brightness should be max to not conflict with the light's brightness setting (equivalent to HS space)
+        return to_max_brightness((int(red), int(green), int(blue)))
+
+
+class HSColorProfile(ColorProfile):
+    mirror_x: bool
+    mirror_y: bool
+    rotation: Num
+    drop_off: float
+
+    def __init__(self, config: Dict):
+        self.mirror_x = config.get('mirror_x', False)
+        self.mirror_y = config.get('mirror_y', False)
+        self.rotation = config.get('rotation', 0)
+        self.drop_off = config.get('drop_off', 1)
+        pass
+
+    def color_for_point(self, point: Point) -> RGB_Color:
+        point = (normalize(point[0], 0.0, 1.0, -1.0, 1.0),
+                 normalize(point[1], 0.0, 1.0, -1.0, 1.0))
+        # calculate hue from angle to center
+        x = point[0] * (-1.0 if self.mirror_x else 1.0)
+        y = point[1] * (-1.0 if self.mirror_y else 1.0)
+        angle = math.degrees(math.atan2(y, x)) + self.rotation
+        # map to [0, 360) degree range
+        hue = (angle + 360) % 360
+
+        # calculate saturation as distance to center, clamped to unit circle
+        distance = min(math.dist([0.0, 0.0], point), 1.0) ** self.drop_off
+        saturation = normalize(distance, 0, 1, 0, 100)
+
+        return hs_to_rgb((int(hue), int(saturation)))
+
+
+def normalize(v: float, in_min: float, in_max: float, out_min: float, out_max: float) -> float:
+    return (out_max - out_min) / (in_max - in_min) * (v - in_min) + out_min
+
+
+def hs_to_rgb(color: HS_Color) -> RGB_Color:
+    """Converts from hs to rgb color space. The resulting color has maximal brightness."""
+    color = colorsys.hsv_to_rgb(color[0] / 360.0, color[1] / 100.0, 1.0)
+    return int(color[0] * 255), int(color[1] * 255), int(color[2] * 255)
+
+
+def to_max_brightness(color: RGB_Color) -> RGB_Color:
+    """Maximizes the brightness of the given rgb color."""
+    hsv = colorsys.rgb_to_hsv(color[0] / 255.0, color[1] / 255.0, color[2] / 255.0)
+    rgb = colorsys.hsv_to_rgb(hsv[0], hsv[1], 1.0)  # set max brightness
+    return int(rgb[0] * 255), int(rgb[1] * 255), int(rgb[2] * 255)
+
+
+def create_color_map_image(color_profile: ColorProfile, size: int) -> any:
+    """Creates an image of the color map in use.
+
+    :param color_profile: The profile from which to sample colors
+    :param size: height and width of the output image in pixels
+
+    :return: Pillow image object of the given color profile
+    """
+
+    from PIL import Image
+    im = Image.new('RGB', (size, size))
+    for y in range(0, size):
+        for x in range(0, size):
+            p_y = normalize(y, 0, size - 1, 0.0, 1.0)
+            p_x = normalize(x, 0, size - 1, 0.0, 1.0)
+            color = color_profile.color_for_point((p_x, p_y))
+            im.putpixel((x, -y), color)
+    return im
+
+
+PROFILE_DEFAULT = RGBColorProfile({
+    'global_weight': 2,
+    'sample_data': [
+        {
+            'point': (0.0, 0.5),
+            'color': (128, 0, 128),
+            'local_weight': 1
+        }, {
+            'point': (0.0, 1.0),
+            'color': (255, 0, 0),
+            'local_weight': 1
+        }, {
+            'point': (0.5, 1.0),
+            'color': (255, 165, 0),
+            'local_weight': 1
+        }, {
+            'point': (1.0, 1.0),
+            'color': (255, 255, 0),
+            'local_weight': 1
+        }, {
+            'point': (1.0, 0.0),
+            'color': (0, 205, 0),
+            'local_weight': 1
+        }, {
+            'point': (0.5, 0.0),
+            'color': (0, 180, 255),
+            'local_weight': 1
+        }, {
+            'point': (0.0, 0.0),
+            'color': (0, 0, 255),
+            'local_weight': 1
+        }
+    ]
+})
+
+PROFILE_SATURATED = HSColorProfile({
+    'mirror_x': True,
+    'mirror_y': False,
+    'rotation': -60,
+    'drop_off': 0.0,
+})
+
+
+class SpotifyMoodLightsSync(Hass):
     """SpotifyMoodLightsSync class."""
+
+    light: str
+    sp: spotipy.Spotify
+    max_retries: int
+    color_profile: ColorProfile
 
     def initialize(self) -> None:
         """Initialize the app and listen for media_player media_content_id changes."""
 
+        # setup light
         self.light = self.args.get('light')
         if not self.light:
             self.error("'light' not specified in app config", level='WARNING')
-        self.initial_light_state = None
 
         # setup spotify component
         client_id = self.args.get('client_id')
@@ -62,31 +209,16 @@ class SpotifyMoodLightsSync(hass.Hass):
         self.max_retries = self.args.get('max_retries', 1)
 
         # setup color profile
-        color_map = []
-        color_profile = self.args.get('color_profile', 'default')
-        if color_profile == 'default':
-            color_map = DEFAULT_PROFILE
-        elif color_profile == 'centered':
-            color_map = CENTERED_PROFILE
-        elif color_profile == 'custom':
-            custom_profile = self.args.get('custom_profile')
-            if custom_profile:
-                try:
-                    color_map = [(x['point'], x['color']) for x in custom_profile]
-                    assert all([len(p) == 2 and len(c) == 3 for p, c in color_map])
-                except (KeyError, AssertionError):
-                    self.error("Profile set to 'custom' but 'custom_profile' is malformed. Falling back to the default "
-                               "profile", level='WARNING')
-                    color_map = DEFAULT_PROFILE
-            else:
-                self.error("Profile set to 'custom' but no 'custom_profile' specified in app config. Falling back to "
-                           "the default profile", level='WARNING')
-                color_map = DEFAULT_PROFILE
-
-        self.color_map_points: List[Point] = [x[0] for x in color_map]
-        self.color_map_colors: Tuple[List[int], List[int], List[int]] = ([x[1][0] for x in color_map],
-                                                                         [x[1][1] for x in color_map],
-                                                                         [x[1][2] for x in color_map])
+        color_profile_arg = self.args.get('color_profile', 'default')
+        if color_profile_arg == 'default' or color_profile_arg == 'centered':  # legacy option for centered
+            self.color_profile = PROFILE_DEFAULT
+        elif color_profile_arg == 'saturated':
+            self.color_profile = PROFILE_SATURATED
+        elif color_profile_arg == 'custom':
+            self.color_profile = self.parse_custom_profile()
+        else:
+            self.error(f"Unknown profile '{color_profile_arg}'. Falling back to the default profile", level='WARNING')
+            self.color_profile = PROFILE_DEFAULT
 
         # output color map as image for debugging
         color_map_image = self.args.get("color_map_image")
@@ -94,13 +226,11 @@ class SpotifyMoodLightsSync(hass.Hass):
             size = color_map_image.get('size')
             location = color_map_image.get('location')
             if size and location:
-                from PIL import Image
-                im = Image.new("RGB", (size, size))
-                im.putdata(self.create_2d_color_map(size, size))
+                im = create_color_map_image(self.color_profile, size)
                 try:
                     im.save(location)
                 except OSError as e:
-                    self.error(f"could not write image to path {location}. Reason: {e.strerror}", level='WARNING')
+                    self.error(f"Could not write image to path '{location}'. Reason: {e.strerror}", level='WARNING')
             else:
                 self.error("'color_map_image' specified, but 'size' or 'location' not specified in app config. "
                            "Skipping image generation", level='WARNING')
@@ -118,22 +248,87 @@ class SpotifyMoodLightsSync(hass.Hass):
 
         self.log(f"App started. Listening on {media_player}")
 
-    def sync_lights_from_spotify(self, entity: str, attribute: str, old_uri: str, new_uri: str, kwargs) -> None:
+    def parse_custom_profile(self) -> ColorProfile:
+        def parse_legacy() -> RGBColorProfile:
+            data = [{'point': x['point'], 'color': x['color'], 'local_weight': 1.0} for x in custom_profile]
+
+            assert len(data) > 0
+            assert all([len(x['point']) == 2 and len(x['color']) == 3 and
+                        0 <= x['point'][0] <= 1 and 0 <= x['point'][1] <= 1 and
+                        0 <= x['color'][0] <= 255 and 0 <= x['color'][1] <= 255 and 0 <= x['color'][2] <= 255
+                        for x in data])
+
+            return RGBColorProfile({
+                'global_weight': 1.0,
+                'sample_data': data
+            })
+
+        def parse_rgb() -> RGBColorProfile:
+            config = {
+                'global_weight': custom_profile.get('global_weight', 1.0),
+                'sample_data': [{
+                    'point': x['point'],
+                    'color': x['color'],
+                    'local_weight': x.get('local_weight', 1.0)
+                } for x in custom_profile['sample_data']]
+            }
+
+            assert len(config['sample_data']) > 0
+            assert all([(isinstance(x['local_weight'], numbers.Number) and
+                         len(x['point']) == 2 and len(x['color']) == 3 and
+                         0 <= x['point'][0] <= 1 and 0 <= x['point'][1] <= 1 and
+                         0 <= x['color'][0] <= 255 and 0 <= x['color'][1] <= 255 and 0 <= x['color'][2] <= 255)
+                        for x in config['sample_data']])
+
+            return RGBColorProfile(config)
+
+        def parse_hs() -> HSColorProfile:
+            config = {
+                'mirror_x': custom_profile.get('mirror_x', False),
+                'mirror_y': custom_profile.get('mirror_y', False),
+                'rotation': custom_profile.get('rotation', 0),
+                'drop_off': custom_profile.get('drop_off', 1),
+            }
+
+            assert isinstance(config['mirror_x'], bool)
+            assert isinstance(config['mirror_y'], bool)
+            assert isinstance(config['rotation'], numbers.Number)
+            assert config['drop_off'] >= 0
+
+            return HSColorProfile(config)
+
+        custom_profile = self.args.get('custom_profile')
+        try:
+            if type(custom_profile) is list:  # legacy config, assume RGB values without weights
+                self.error("Using deprecated custom_profile config format. See README for new format.", level='WARNING')
+                return parse_legacy()
+            elif custom_profile:
+                mode = custom_profile.get('color_mode')
+                if mode == 'rgb':
+                    return parse_rgb()
+                elif mode == 'hs':
+                    return parse_hs()
+                else:
+                    self.error(
+                        f"Unknown color mode '{mode}' in 'custom_profile'. Must be 'rgb' or 'hs'. Falling back to "
+                        f"the default profile", level='WARNING')
+                    return PROFILE_DEFAULT
+            else:
+                self.error("Profile set to 'custom' but no 'custom_profile' specified in app config. Falling back to "
+                           "the default profile", level='WARNING')
+                return PROFILE_DEFAULT
+        except (KeyError, AssertionError):
+            self.error("Profile set to 'custom' but 'custom_profile' is malformed. Falling back to the default "
+                       "profile", level='WARNING')
+            return PROFILE_DEFAULT
+
+    def sync_lights_from_spotify(self, _entity: str, _attribute: str, old_uri: str, new_uri: str, _kwargs) -> None:
         if new_uri is None or old_uri == new_uri:
             return
 
-        # if new_uri is None:
-        #    if self.initial_light_state is not None:
-        #        self.restore_initial_light_state()
-        #        self.initial_light_state = None
-        #    return
-
-        # if self.initial_light_state is None:
-        #    self.save_initial_light_state()
-
         self.sync_light(new_uri)
 
-    def sync_lights_from_search(self, entity: str, attribute: str, old: dict, new: dict, kwargs) -> None:
+    def sync_lights_from_search(self, _entity: str, _attribute: str, old: dict, new: dict, _kwargs) -> None:
         title = new['attributes'].get('media_title')
         artist = new['attributes'].get('media_artist')
         old_title = old['attributes'].get('media_title')
@@ -181,9 +376,10 @@ class SpotifyMoodLightsSync(hass.Hass):
         if self.light is None:
             return
 
+        # the color mode used here should not matter, since HA already converts it to a mode supported by the light
         self.turn_on(self.light, **{'rgb_color': color})
 
-    def color_from_uri(self, track_uri: str) -> Color:
+    def color_from_uri(self, track_uri: str) -> RGB_Color:
         """Get the color from a spotify track uri."""
 
         track_features = self.call_api(partial(self.sp.audio_features, track_uri))[0]
@@ -192,78 +388,11 @@ class SpotifyMoodLightsSync(hass.Hass):
 
         valence: float = track_features['valence']
         energy: float = track_features['energy']
-        color = self.color_for_point((valence, energy))
+        color = self.color_profile.color_for_point((valence, energy))
 
         self.log(f"Got color {color} for valence {valence} and energy {energy} in track '{track_uri}'", level='DEBUG')
 
         return color
-
-    def color_for_point(self, point: Point) -> Color:
-        """Computes an RGB color value for a point on the color plane.
-
-        :param point: coordinates in the range [0,1]X[0,1]
-
-        :return: interpolated RGB color for the input point as [r, g, b]
-        """
-
-        def mul_array(list_a: List[int], list_b: List[float]) -> List[float]:
-            return [ab[0] * ab[1] for ab in zip(list_a, list_b)]
-
-        def mul_scalar(list_a: Iterable[Num], scalar: float) -> List[Num]:
-            return [x * scalar for x in list_a]
-
-        def inv_dist_weighted_sum(v: List[int], w: List[float]) -> float:
-            return sum(mul_array(v, w)) / sum(weights)
-
-        distances = [math.dist(point, p) for p in self.color_map_points]
-        weights = [1 / (d + 1E-6) for d in distances]
-
-        # compute new RGB value as inverse distance weighted sum:
-        red = inv_dist_weighted_sum(self.color_map_colors[0], weights)
-        green = inv_dist_weighted_sum(self.color_map_colors[1], weights)
-        blue = inv_dist_weighted_sum(self.color_map_colors[2], weights)
-        color = (red, green, blue)
-
-        # brighten color spectrum
-        sum_color, max_color = sum(color), max(color)
-        required_sum_color = 600.0
-        if max_color * (required_sum_color / sum_color) <= 255:
-            color = mul_scalar(color, required_sum_color / sum_color)
-        else:
-            color = mul_scalar(color, 255 / max_color)
-
-        return int(color[0]), int(color[1]), int(color[2])
-
-    def create_2d_color_map(self, height: int, width: int) -> List[Color]:
-        """Creates an image of the color map in use.
-
-        :param height: height of the output image in pixels
-        :param width: width of the output image in pixels
-
-        :return: RGB image of the color plane as a flat list of pixel tuples
-        """
-
-        def normalize(v, in_min, in_max, out_min, out_max):
-            return (out_max - out_min) / (in_max - in_min) * (v - in_min) + out_min
-
-        image = []
-        for y in reversed(range(0, height)):
-            for x in range(0, width):
-                p_y = normalize(y, 0, height - 1, 0, 1)
-                p_x = normalize(x, 0, width - 1, 0, 1)
-                color = self.color_for_point((p_x, p_y))
-                image.append(color)
-        return image
-
-    def save_initial_light_state(self):
-        self.initial_light_state = dict(self.get_state(self.light, attribute='all'))
-
-    def restore_initial_light_state(self):
-        if self.initial_light_state['state'] == 'on':
-            color = self.initial_light_state['attributes'].get('color', None)
-            self.turn_on(self.light, **({} if color is None else {'rgb_color': color}))
-        elif self.initial_light_state['state'] == 'off':
-            self.turn_off(self.light)
 
     def call_api(self, func: Callable[[], T]) -> T:
         retries = self.max_retries
