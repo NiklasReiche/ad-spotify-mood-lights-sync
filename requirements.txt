@@ -5,3 +5,4 @@ spotipy
 Pillow
 requests
 matplotlib
+appdaemon
