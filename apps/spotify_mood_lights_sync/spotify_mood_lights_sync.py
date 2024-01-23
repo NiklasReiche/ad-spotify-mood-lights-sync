@@ -217,7 +217,8 @@ class SpotifyMoodLightsSync(Hass):
         elif color_profile_arg == 'custom':
             self.color_profile = self.parse_custom_profile()
         else:
-            self.error(f"Unknown profile '{color_profile_arg}'. Falling back to the default profile", level='WARNING')
+            self.error(f"Unknown profile '{color_profile_arg}'. Falling back to the default profile",
+                       level='WARNING')
             self.color_profile = PROFILE_DEFAULT
 
         # output color map as image for debugging
@@ -230,7 +231,8 @@ class SpotifyMoodLightsSync(Hass):
                 try:
                     im.save(location)
                 except OSError as e:
-                    self.error(f"Could not write image to path '{location}'. Reason: {e.strerror}", level='WARNING')
+                    self.error(f"Could not write image to path '{location}'. Reason: {e.strerror}",
+                               level='WARNING')
             else:
                 self.error("'color_map_image' specified, but 'size' or 'location' not specified in app config. "
                            "Skipping image generation", level='WARNING')
@@ -300,7 +302,8 @@ class SpotifyMoodLightsSync(Hass):
         custom_profile = self.args.get('custom_profile')
         try:
             if type(custom_profile) is list:  # legacy config, assume RGB values without weights
-                self.error("Using deprecated custom_profile config format. See README for new format.", level='WARNING')
+                self.error("Using deprecated custom_profile config format. See README for new format.",
+                           level='WARNING')
                 return parse_legacy()
             elif custom_profile:
                 mode = custom_profile.get('color_mode')
@@ -310,16 +313,16 @@ class SpotifyMoodLightsSync(Hass):
                     return parse_hs()
                 else:
                     self.error(
-                        f"Unknown color mode '{mode}' in 'custom_profile'. Must be 'rgb' or 'hs'. Falling back to "
-                        f"the default profile", level='WARNING')
+                        f"Unknown color mode '{mode}' in 'custom_profile'. Must be 'rgb' or 'hs'. Falling back to"
+                        f" the default profile", level='WARNING')
                     return PROFILE_DEFAULT
             else:
-                self.error("Profile set to 'custom' but no 'custom_profile' specified in app config. Falling back to "
-                           "the default profile", level='WARNING')
+                self.error("Profile set to 'custom' but no 'custom_profile' specified in app config. Falling back"
+                           " to the default profile", level='WARNING')
                 return PROFILE_DEFAULT
         except (KeyError, AssertionError):
-            self.error("Profile set to 'custom' but 'custom_profile' is malformed. Falling back to the default "
-                       "profile", level='WARNING')
+            self.error("Profile set to 'custom' but 'custom_profile' is malformed. Falling back to the default"
+                       " profile", level='WARNING')
             return PROFILE_DEFAULT
 
     def sync_lights_from_spotify(self, _entity: str, _attribute: str, old_uri: str, new_uri: str, _kwargs) -> None:
@@ -344,7 +347,8 @@ class SpotifyMoodLightsSync(Hass):
             return
 
         if len(results['tracks']['items']) == 0:
-            self.log(f"Could not find track id for '{title}' by '{artist}'. Searching just by title...", level='INFO')
+            self.log(f"Could not find track id for '{title}' by '{artist}'. Searching just by title...",
+                     level='INFO')
 
             try:
                 results = self.call_api(partial(self.sp.search, q=f'track:{title}', type='track'))
@@ -390,7 +394,8 @@ class SpotifyMoodLightsSync(Hass):
         energy: float = track_features['energy']
         color = self.color_profile.color_for_point((valence, energy))
 
-        self.log(f"Got color {color} for valence {valence} and energy {energy} in track '{track_uri}'", level='DEBUG')
+        self.log(f"Got color {color} for valence {valence} and energy {energy} in track '{track_uri}'",
+                 level='DEBUG')
 
         return color
 

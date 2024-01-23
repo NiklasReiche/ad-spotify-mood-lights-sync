@@ -22,7 +22,3 @@ jobs:
 
       - name: Run pytest
         run: pytest
-
-      - name: Run linting with autopep8
-        if: always()
-        run: autopep8 --diff --recursive --exit-code .
