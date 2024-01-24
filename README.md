@@ -27,8 +27,11 @@ python_packages:
 ## Installation
 
 This app is available on [HACS](https://hacs.xyz/) for easy installation and updating.
+
 **Important:** HACS does not work by default if you are running AppDaemon with version 15 or newer of the Home 
 Assistant add-on. Refer to https://github.com/joBr99/nspanel-lovelace-ui/issues/1029#issue-1995332526 for a workaround.
+Other AppDaemon installations should work with HACS as long as the `app_dir` in your `appdaemon.yaml` points to 
+`appdaemon/apps/` within your Home Assistant config folder, as this is where HACS puts downloaded apps.
 
 You can also install this app manually by simply downloading the `spotify_mood_lights_sync` directory from inside the 
 `apps` directory here to your local `apps` directory. Then add the configuration to your `apps/apps.yaml`.
