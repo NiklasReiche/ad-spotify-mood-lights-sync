@@ -183,6 +183,7 @@ class SpotifyMoodLightsSync(Hass):
     sp: spotipy.Spotify
     max_retries: int
     color_profile: ColorProfile
+    enabled: bool = True
 
     def initialize(self) -> None:
         """Initialize the app and listen for media_player media_content_id changes."""
@@ -237,6 +238,12 @@ class SpotifyMoodLightsSync(Hass):
                 self.error("'color_map_image' specified, but 'size' or 'location' not specified in app config. "
                            "Skipping image generation", level='WARNING')
 
+        # Register enable/disable callback
+        enable_switch = self.args.get('enable_switch')
+        if enable_switch:
+            self.enabled = self.get_state(enable_switch) == 'on'
+            self.listen_state(self.enable_disable, enable_switch, attribute='all')
+
         # register callback
         media_player = self.args.get('media_player')
         if not media_player:
@@ -249,6 +256,9 @@ class SpotifyMoodLightsSync(Hass):
             self.listen_state(self.sync_lights_from_search, media_player, attribute='all')
 
         self.log(f"App started. Listening on {media_player}")
+
+    def enable_disable(self, _entity: str, _attribute: str, old: dict, new: dict, _kwargs):
+        self.enabled = new.get('state') == 'on'
 
     def parse_custom_profile(self) -> ColorProfile:
         def parse_legacy() -> RGBColorProfile:
@@ -326,12 +336,15 @@ class SpotifyMoodLightsSync(Hass):
             return PROFILE_DEFAULT
 
     def sync_lights_from_spotify(self, _entity: str, _attribute: str, old_uri: str, new_uri: str, _kwargs) -> None:
-        if new_uri is None or old_uri == new_uri:
+        if new_uri is None or old_uri == new_uri or not self.enabled:
             return
 
         self.sync_light(new_uri)
 
     def sync_lights_from_search(self, _entity: str, _attribute: str, old: dict, new: dict, _kwargs) -> None:
+        if not self.enabled:
+            return
+        
         title = new['attributes'].get('media_title')
         artist = new['attributes'].get('media_artist')
         old_title = old['attributes'].get('media_title')
