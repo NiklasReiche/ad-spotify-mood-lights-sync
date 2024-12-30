@@ -1,3 +1,7 @@
+# Important
+
+Due to [recent changes to Spotify's API](https://developer.spotify.com/blog/2024-11-27-changes-to-the-web-api), this app will no longer work for new users. Existing installations may continue to work for now.
+
 # Spotify Mood Lights Sync
 
 _AppDaemon app that synchronizes rgb lights to the mood of the currently playing song in Home Assistant._
